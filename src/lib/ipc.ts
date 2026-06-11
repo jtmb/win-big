@@ -3,7 +3,7 @@
 // Type-safe wrapper around the Electron preload API.
 // In the renderer, window.winbigAPI is exposed via contextBridge.
 
-import type { Prediction, Draw, AppSettings, ScrapingProgress, JobRecord } from './types';
+import type { Prediction, Draw, AppSettings, ScrapingProgress, JobRecord, EndlessProgress } from './types';
 
 declare global {
   interface Window {
@@ -22,6 +22,11 @@ declare global {
       getLatestDrawDate: (lottery: '649' | 'max') => Promise<string | null>;
       clearAllData: () => Promise<void>;
       getDbStats: () => Promise<{ draws: number; jobs: number }>;
+      endlessStart: (lotteryType: '649' | 'max') => Promise<void>;
+      endlessPause: () => Promise<void>;
+      endlessResume: () => Promise<void>;
+      endlessStop: () => Promise<void>;
+      onEndlessProgress: (callback: (evt: EndlessProgress) => void) => () => void;
     };
   }
 }
@@ -49,6 +54,7 @@ export async function getSettings(): Promise<AppSettings> {
     return {
       aiProvider: 'lmstudio',
       scraperConcurrency: 12,
+      scrapeDepthYears: 2,
       lmstudio: { baseUrl: 'http://192.168.0.13:1234/v1', model: '' },
       openai: { baseUrl: 'https://api.openai.com/v1', apiKey: '', model: 'gpt-4o' },
     };
@@ -128,4 +134,34 @@ export async function getLatestDrawDate(lottery: '649' | 'max'): Promise<string 
   const api = getAPI();
   if (!api) return null;
   return api.getLatestDrawDate(lottery);
+}
+
+export async function endlessStart(lotteryType: '649' | 'max'): Promise<void> {
+  const api = getAPI();
+  if (!api) throw new Error('Electron API not available');
+  return api.endlessStart(lotteryType);
+}
+
+export async function endlessPause(): Promise<void> {
+  const api = getAPI();
+  if (!api) throw new Error('Electron API not available');
+  return api.endlessPause();
+}
+
+export async function endlessResume(): Promise<void> {
+  const api = getAPI();
+  if (!api) throw new Error('Electron API not available');
+  return api.endlessResume();
+}
+
+export async function endlessStop(): Promise<void> {
+  const api = getAPI();
+  if (!api) throw new Error('Electron API not available');
+  return api.endlessStop();
+}
+
+export function onEndlessProgress(callback: (evt: EndlessProgress) => void): () => void {
+  const api = getAPI();
+  if (!api) return () => {};
+  return api.onEndlessProgress(callback);
 }

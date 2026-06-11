@@ -10,9 +10,12 @@ interface ProgressIndicatorProps {
   /** Human-readable draw counts shown below the bar (if total > 0) */
   drawCurrent?: number;
   drawTotal?: number;
+  /** Lottery icon to pulse instead of the spinning circle */
+  icon?: string;
+  iconAlt?: string;
 }
 
-export default function ProgressIndicator({ message, current, total, drawCurrent, drawTotal }: ProgressIndicatorProps) {
+export default function ProgressIndicator({ message, current, total, drawCurrent, drawTotal, icon, iconAlt }: ProgressIndicatorProps) {
   const pct = current != null && total != null && total > 0
     ? Math.round((current / total) * 100)
     : 0;
@@ -52,21 +55,36 @@ export default function ProgressIndicator({ message, current, total, drawCurrent
         padding: 40,
       }}
     >
-      {/* Spinner */}
-      <motion.div
-        animate={{ rotate: 360 }}
-        transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}
-        style={{
-          width: 64,
-          height: 64,
-          borderRadius: '50%',
-          borderTop: '5px solid var(--accent)',
-          borderRight: '5px solid var(--accent)',
-          borderBottom: '5px solid var(--border)',
-          borderLeft: '5px solid var(--border)',
-          boxShadow: '0 0 24px rgba(233, 69, 96, 0.25)',
-        }}
-      />
+      {/* Pulsing icon (or spinner fallback) */}
+      {icon ? (
+        <motion.img
+          src={icon}
+          alt={iconAlt || ''}
+          animate={{ scale: [1, 1.08, 1] }}
+          transition={{ repeat: Infinity, duration: 2, ease: 'easeInOut' }}
+          style={{
+            width: 'clamp(70px, 8vw, 100px)',
+            height: 'clamp(70px, 8vw, 100px)',
+            objectFit: 'contain',
+            filter: 'drop-shadow(0 0 16px rgba(233, 69, 96, 0.35))',
+          }}
+        />
+      ) : (
+        <motion.div
+          animate={{ rotate: 360 }}
+          transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}
+          style={{
+            width: 64,
+            height: 64,
+            borderRadius: '50%',
+            borderTop: '5px solid var(--accent)',
+            borderRight: '5px solid var(--accent)',
+            borderBottom: '5px solid var(--border)',
+            borderLeft: '5px solid var(--border)',
+            boxShadow: '0 0 24px rgba(233, 69, 96, 0.25)',
+          }}
+        />
+      )}
 
       <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)', textAlign: 'center', maxWidth: 320 }}>
         {message}

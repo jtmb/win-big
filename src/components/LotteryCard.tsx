@@ -64,7 +64,7 @@ export default function LotteryCard({
         {icon}
       </div>
       <div style={{ flex: 1 }}>
-        <div style={{ fontSize: 'clamp(17px, 1.8vw, 22px)', fontWeight: 700, marginBottom: 3 }}>{name}</div>
+        <div style={{ fontSize: 'clamp(17px, 1.8vw, 22px)', fontWeight: 700, marginBottom: 3, color: 'var(--text-primary)' }}>{name}</div>
         <div style={{ fontSize: 'clamp(12px, 1.2vw, 15px)', color: 'var(--text-secondary)', marginBottom: 5 }}>{description}</div>
         <div style={{ display: 'flex', gap: 'clamp(12px, 1.5vw, 20px)', fontSize: 'clamp(11px, 1.1vw, 13px)', color: 'var(--text-secondary)' }}>
           <span>📅 {drawDays}</span>

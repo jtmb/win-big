@@ -4,6 +4,7 @@ import { loadSettings, saveSettings } from './settings';
 import { scrapeResults } from './scraper/olg-scraper';
 import { analyze } from './ai/analyzer';
 import { testConnection } from './ai/index';
+import { EndlessRunner } from './endless-runner';
 import { Draw, AppSettings, ScrapingProgress, Prediction } from './preload';
 
 let currentAbortController: AbortController | null = null;
@@ -13,6 +14,10 @@ export async function registerIpcHandlers(): Promise<void> {
 
   // Cancel the currently running job
   ipcMain.handle('cancel-job', async () => {
+    if (endlessRunner) {
+      endlessRunner.stop();
+      endlessRunner = null;
+    }
     if (currentAbortController) {
       currentAbortController.abort();
       currentAbortController = null;
@@ -39,7 +44,7 @@ export async function registerIpcHandlers(): Promise<void> {
       let drawsCount = 0;
       const settings = loadSettings();
       try {
-        const draws = await scrapeResults(lotteryType, settings.scraperConcurrency || 12, testMode || 0, send, abortController.signal);
+        const draws = await scrapeResults(lotteryType, settings.scraperConcurrency || 12, testMode || 0, send, abortController.signal, settings.scrapeDepthYears ?? 2);
         drawsCount = draws.length;
         if (drawsCount > 0) {
           send({
@@ -146,5 +151,48 @@ export async function registerIpcHandlers(): Promise<void> {
   // Get DB stats for settings UI
   ipcMain.handle('get-db-stats', async () => {
     return getDbStats();
+  });
+
+  // ===================== Endless Mode =====================
+  let endlessRunner: EndlessRunner | null = null;
+
+  ipcMain.handle('endless:start', async (_event, lotteryType: '649' | 'max') => {
+    // Stop any existing runner
+    if (endlessRunner) {
+      endlessRunner.stop();
+    }
+
+    const sender = _event.sender;
+    const sendProgress = (evt: { runNumber: number; confidence: number; drawCount: number; status: string; prediction?: Prediction; error?: string }) => {
+      try { sender.send('endless:event', evt); } catch { /* renderer may be gone */ }
+    };
+    const sendAnalysis = (text: string) => {
+      try { sender.send('analysis-progress', text); } catch { /* renderer may be gone */ }
+    };
+    const sendScraping = (progress: ScrapingProgress) => {
+      try { sender.send('scraping-progress', progress); } catch { /* renderer may be gone */ }
+    };
+
+    endlessRunner = new EndlessRunner();
+
+    // Fire-and-forget: the runner sends progress via IPC
+    endlessRunner.start(lotteryType, sendProgress, sendAnalysis, sendScraping).finally(() => {
+      endlessRunner = null;
+    });
+  });
+
+  ipcMain.handle('endless:pause', async () => {
+    if (endlessRunner) endlessRunner.pause();
+  });
+
+  ipcMain.handle('endless:resume', async () => {
+    if (endlessRunner) endlessRunner.resume();
+  });
+
+  ipcMain.handle('endless:stop', async () => {
+    if (endlessRunner) {
+      endlessRunner.stop();
+      endlessRunner = null;
+    }
   });
 }

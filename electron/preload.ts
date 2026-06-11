@@ -32,6 +32,7 @@ export interface Draw {
 export interface AppSettings {
   aiProvider: 'lmstudio' | 'openai';
   scraperConcurrency: number;
+  scrapeDepthYears: number;
   lmstudio: {
     baseUrl: string;
     model: string;
@@ -49,6 +50,15 @@ export interface JobRecord {
   drawCount: number;
   prediction: Prediction;
   createdAt: string;
+}
+
+export interface EndlessProgress {
+  runNumber: number;
+  confidence: number;
+  drawCount: number;
+  status: 'running' | 'paused' | 'stopped' | 'complete';
+  prediction?: Prediction;
+  error?: string;
 }
 
 const api = {
@@ -103,6 +113,26 @@ const api = {
 
   getDbStats: (): Promise<{ draws: number; jobs: number }> =>
     ipcRenderer.invoke('get-db-stats'),
+
+  endlessStart: (lotteryType: '649' | 'max'): Promise<void> =>
+    ipcRenderer.invoke('endless:start', lotteryType),
+
+  endlessPause: (): Promise<void> =>
+    ipcRenderer.invoke('endless:pause'),
+
+  endlessResume: (): Promise<void> =>
+    ipcRenderer.invoke('endless:resume'),
+
+  endlessStop: (): Promise<void> =>
+    ipcRenderer.invoke('endless:stop'),
+
+  onEndlessProgress: (callback: (evt: EndlessProgress) => void) => {
+    const handler = (_event: IpcRendererEvent, evt: EndlessProgress) => callback(evt);
+    ipcRenderer.on('endless:event', handler);
+    return () => {
+      ipcRenderer.removeListener('endless:event', handler);
+    };
+  },
 };
 
 contextBridge.exposeInMainWorld('winbigAPI', api);

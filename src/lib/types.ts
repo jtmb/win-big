@@ -34,6 +34,7 @@ export interface Draw {
 export interface AppSettings {
   aiProvider: 'lmstudio' | 'openai';
   scraperConcurrency: number;
+  scrapeDepthYears: number;
   lmstudio: {
     baseUrl: string;
     model: string;
@@ -51,4 +52,13 @@ export interface JobRecord {
   drawCount: number;
   prediction: Prediction;
   createdAt: string;
+}
+
+export interface EndlessProgress {
+  runNumber: number;
+  confidence: number;
+  drawCount: number;
+  status: 'running' | 'paused' | 'stopped' | 'complete';
+  prediction?: Prediction;
+  error?: string;
 }

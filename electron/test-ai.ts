@@ -9,6 +9,7 @@ import type { Draw, AppSettings } from './preload';
 const SETTINGS: AppSettings = {
   aiProvider: 'lmstudio',
   scraperConcurrency: 12,
+  scrapeDepthYears: 2,
   lmstudio: {
     baseUrl: 'http://192.168.0.13:1234/v1',
     model: '',

@@ -204,7 +204,8 @@ export async function scrapeResults(
   concurrency: number = 12,
   testMode: number = 0,
   onProgress?: (progress: ScraperProgress) => void,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  yearsBack: number = 2,
 ): Promise<ParsedDraw[]> {
   await initDB();
 
@@ -218,7 +219,7 @@ export async function scrapeResults(
   }
 
   const existingCount = getDrawCount(lottery);
-  const targetDates = generateDrawDates(lottery, 2);
+  const targetDates = generateDrawDates(lottery, yearsBack);
   let neededDates = targetDates.slice(existingCount);
   const poolSize = Math.max(1, Math.min(concurrency, 24)); // clamp 1-24
 

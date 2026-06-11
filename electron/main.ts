@@ -53,8 +53,8 @@ function startNextServer(): Promise<void> {
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
-    width: 1024,
-    height: 768,
+    width: 1297,
+    height: 1011,
     minWidth: 800,
     minHeight: 600,
     resizable: true,
@@ -87,7 +87,7 @@ app.whenReady().then(async () => {
     console.error('Failed to start Next.js server:', err);
   }
 
-    await registerIpcHandlers();
+  await registerIpcHandlers();
   createWindow();
 
   app.on('activate', () => {

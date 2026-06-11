@@ -41,8 +41,8 @@ export default function HistoryPage() {
         display: 'flex',
         flexDirection: 'column',
         overflowY: 'auto',
-        padding: '20px 30px',
-        gap: 16,
+        padding: 'clamp(16px, 2vh, 32px) clamp(16px, 3vw, 48px)',
+        gap: 'clamp(14px, 1.8vh, 22px)',
       }}>
         {/* Filter pills */}
         <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
@@ -56,7 +56,7 @@ export default function HistoryPage() {
                 border: `1px solid ${filter === f ? 'var(--accent)' : 'var(--border)'}`,
                 background: filter === f ? 'var(--accent)' : 'var(--bg-card)',
                 color: filter === f ? '#fff' : 'var(--text-secondary)',
-                fontSize: 12,
+                fontSize: 'clamp(11px, 1.1vw, 14px)',
                 fontWeight: 600,
                 cursor: 'pointer',
               }}
@@ -68,7 +68,7 @@ export default function HistoryPage() {
 
         {/* Job count */}
         {loaded && (
-          <p style={{ textAlign: 'center', fontSize: 12, color: 'var(--text-secondary)' }}>
+          <p style={{ textAlign: 'center', fontSize: 'clamp(12px, 1.1vw, 14px)', color: 'var(--text-secondary)' }}>
             {filtered.length} run{filtered.length !== 1 ? 's' : ''}
           </p>
         )}
@@ -85,17 +85,17 @@ export default function HistoryPage() {
         ) : filtered.length === 0 ? (
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
             <span style={{ fontSize: 40 }}>📭</span>
-            <p style={{ color: 'var(--text-secondary)', fontSize: 14 }}>No runs yet</p>
+            <p style={{ color: 'var(--text-secondary)', fontSize: 'clamp(14px, 1.4vw, 18px)' }}>No runs yet</p>
             <motion.button
               whileHover={{ scale: 1.04 }}
               whileTap={{ scale: 0.96 }}
               onClick={() => router.push('/')}
               style={{
-                padding: '10px 28px',
-                borderRadius: 10,
+                padding: 'clamp(8px, 1vh, 14px) clamp(24px, 3vw, 36px)',
+                borderRadius: 12,
                 background: 'linear-gradient(135deg, var(--accent), #c0395b)',
                 color: '#fff',
-                fontSize: 14,
+                fontSize: 'clamp(13px, 1.3vw, 16px)',
                 fontWeight: 700,
               }}
             >
@@ -103,7 +103,7 @@ export default function HistoryPage() {
             </motion.button>
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 640, width: '100%', margin: '0 auto', paddingBottom: 30 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 'min(800px, 85vw)', width: '100%', margin: '0 auto', paddingBottom: 30 }}>
             <AnimatePresence>
               {filtered.map((job, idx) => {
                 const isExpanded = expandedId === job.id;
@@ -185,34 +185,34 @@ export default function HistoryPage() {
                           }}>
                             {/* Numbers */}
                             <div style={{ paddingTop: 12 }}>
-                              <div style={{ fontSize: 10, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>
+                              <div style={{ fontSize: 'clamp(10px, 0.9vw, 12px)', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>
                                 Main Numbers
                               </div>
                               <div style={{ display: 'flex', gap: 6 }}>
                                 {p.mainNumbers.map((n, i) => (
-                                  <NumberBall key={i} number={n} size={36} delay={i * 0.03} />
+                                  <NumberBall key={i} number={n} size={0} delay={i * 0.03} />
                                 ))}
-                                <NumberBall number={p.bonus} size={36} color="#f5c518" delay={0.2} />
+                                <NumberBall number={p.bonus} size={0} color="#f5c518" delay={0.2} />
                               </div>
                             </div>
 
                             {/* Encore & Gold Ball */}
                             <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
                               <div>
-                                <div style={{ fontSize: 10, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>
+                                <div style={{ fontSize: 'clamp(10px, 0.9vw, 12px)', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>
                                   Encore
                                 </div>
-                                <span style={{ fontFamily: 'monospace', fontSize: 16, fontWeight: 700 }}>
+                                <span style={{ fontFamily: 'monospace', fontSize: 'clamp(14px, 1.4vw, 18px)', fontWeight: 700 }}>
                                   {p.encore}
                                 </span>
                               </div>
                               {p.goldBall && (
                                 <div>
-                                  <div style={{ fontSize: 10, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>
+                                  <div style={{ fontSize: 'clamp(10px, 0.9vw, 12px)', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>
                                     Gold Ball
                                   </div>
                                   <span style={{
-                                    fontFamily: 'monospace', fontSize: 16, fontWeight: 700,
+                                    fontFamily: 'monospace', fontSize: 'clamp(14px, 1.4vw, 18px)', fontWeight: 700,
                                     color: 'var(--accent-gold)',
                                   }}>
                                     {p.goldBall}
@@ -223,11 +223,11 @@ export default function HistoryPage() {
 
                             {/* Reasoning */}
                             <div>
-                              <div style={{ fontSize: 10, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>
+                              <div style={{ fontSize: 'clamp(10px, 0.9vw, 12px)', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>
                                 AI Reasoning
                               </div>
                               <div style={{
-                                fontSize: 11,
+                                fontSize: 'clamp(11px, 1vw, 13px)',
                                 color: 'var(--text-secondary)',
                                 lineHeight: 1.6,
                                 background: 'var(--bg-secondary)',

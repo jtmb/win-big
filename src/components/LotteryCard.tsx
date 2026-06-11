@@ -36,9 +36,9 @@ export default function LotteryCard({
       style={{
         display: 'flex',
         alignItems: 'center',
-        gap: 16,
-        padding: '20px 24px',
-        borderRadius: 16,
+        gap: 'clamp(14px, 1.5vw, 22px)',
+        padding: 'clamp(18px, 2vh, 28px) clamp(20px, 2.5vw, 32px)',
+        borderRadius: 18,
         background: 'var(--bg-card)',
         border: '2px solid var(--border)',
         width: '100%',
@@ -48,24 +48,25 @@ export default function LotteryCard({
       }}
     >
       <div style={{
-        width: 56,
-        height: 56,
+        width: 'clamp(48px, 5vw, 64px)',
+        height: 'clamp(48px, 5vw, 64px)',
         borderRadius: 14,
         background: selected ? 'var(--accent)' : 'var(--bg-secondary)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        fontSize: 24,
+        fontSize: 'clamp(20px, 2.5vw, 28px)',
         flexShrink: 0,
         transition: 'background 0.2s',
         color: selected ? '#fff' : 'var(--text-secondary)',
+        overflow: 'hidden',
       }}>
         {icon}
       </div>
       <div style={{ flex: 1 }}>
-        <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 2 }}>{name}</div>
-        <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4 }}>{description}</div>
-        <div style={{ display: 'flex', gap: 16, fontSize: 11, color: 'var(--text-secondary)' }}>
+        <div style={{ fontSize: 'clamp(17px, 1.8vw, 22px)', fontWeight: 700, marginBottom: 3 }}>{name}</div>
+        <div style={{ fontSize: 'clamp(12px, 1.2vw, 15px)', color: 'var(--text-secondary)', marginBottom: 5 }}>{description}</div>
+        <div style={{ display: 'flex', gap: 'clamp(12px, 1.5vw, 20px)', fontSize: 'clamp(11px, 1.1vw, 13px)', color: 'var(--text-secondary)' }}>
           <span>📅 {drawDays}</span>
           <span>🎯 {numbers}</span>
         </div>

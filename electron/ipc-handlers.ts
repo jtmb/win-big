@@ -134,7 +134,13 @@ export async function registerIpcHandlers(): Promise<void> {
 
   // Clear all database data
   ipcMain.handle('clear-all-data', async () => {
-    clearAllData();
+    try {
+      clearAllData();
+      return { success: true };
+    } catch (err) {
+      console.error('[clear-all-data] Failed to clear database:', err);
+      throw err;
+    }
   });
 
   // Get DB stats for settings UI

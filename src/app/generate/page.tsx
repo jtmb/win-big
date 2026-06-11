@@ -38,8 +38,11 @@ export default function GeneratePage({
   } = useApp();
 
   const [showReasoning, setShowReasoning] = useState(false);
+  const [showAnalysisLog, setShowAnalysisLog] = useState(true);
   const [testMode, setTestMode] = useState(false);
   const analysisRef = useRef<HTMLDivElement>(null);
+
+  const lotteryIcon = lottery === '649' ? '/lotto649.png' : '/lottomax.png';
 
   // Auto-scroll analysis text as it streams in
   useEffect(() => {
@@ -112,8 +115,8 @@ export default function GeneratePage({
         flexDirection: 'column',
         alignItems: 'center',
         overflowY: 'auto',
-        padding: '20px 30px',
-        gap: 20,
+        padding: 'clamp(16px, 2vh, 32px) clamp(16px, 3vw, 48px)',
+        gap: 'clamp(16px, 2vh, 28px)',
       }}>
         {/* Generate Button */}
         {!isGenerating && !prediction && !error && (
@@ -129,7 +132,7 @@ export default function GeneratePage({
               gap: 16,
             }}
           >
-            <p style={{ fontSize: 14, color: 'var(--text-secondary)', textAlign: 'center' }}>
+            <p style={{ fontSize: 'clamp(14px, 1.4vw, 18px)', color: 'var(--text-secondary)', textAlign: 'center' }}>
               Ready to analyze {lotteryName} results
               {settings ? ` using ${providerName}` : ''}
             </p>
@@ -138,11 +141,11 @@ export default function GeneratePage({
               whileTap={{ scale: 0.94 }}
               onClick={handleGenerate}
               style={{
-                padding: '18px 56px',
+                padding: 'clamp(16px, 2vh, 24px) clamp(48px, 6vw, 72px)',
                 borderRadius: 16,
                 background: 'linear-gradient(135deg, var(--accent), #c0395b)',
                 color: '#fff',
-                fontSize: 18,
+                fontSize: 'clamp(17px, 1.7vw, 22px)',
                 fontWeight: 800,
                 letterSpacing: 0.5,
                 boxShadow: '0 8px 32px rgba(233, 69, 96, 0.4)',
@@ -173,10 +176,25 @@ export default function GeneratePage({
           <div style={{
             flex: 1,
             display: 'flex',
+            flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
             width: '100%',
+            gap: 12,
           }}>
+            <motion.img
+              src={lotteryIcon}
+              alt={lotteryName}
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ type: 'spring', stiffness: 200, damping: 22 }}
+              style={{
+                width: 'clamp(70px, 8vw, 100px)',
+                height: 'clamp(70px, 8vw, 100px)',
+                objectFit: 'contain',
+                filter: 'drop-shadow(0 0 16px rgba(233, 69, 96, 0.35))',
+              }}
+            />
             <ProgressIndicator
               message={scrapingProgress?.message || 'Analyzing...'}
               current={scrapingProgress?.current}
@@ -218,11 +236,11 @@ export default function GeneratePage({
                   transition={{ delay: 0.15 }}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 8,
-                    fontSize: 13, color: 'var(--text-secondary)',
+                    fontSize: 'clamp(12px, 1.2vw, 15px)', color: 'var(--text-secondary)',
                   }}
                 >
                   <span>AI Confidence:</span>
-                  <div style={{ width: 100, height: 6, borderRadius: 3, background: 'var(--border)', overflow: 'hidden' }}>
+                  <div style={{ width: 'clamp(80px, 8vw, 120px)', height: 6, borderRadius: 3, background: 'var(--border)', overflow: 'hidden' }}>
                     <div style={{
                       width: `${Math.round(prediction.confidence * 100)}%`,
                       height: '100%',
@@ -235,7 +253,7 @@ export default function GeneratePage({
 
                 {/* Main numbers + bonus */}
                 <div style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1 }}>
+                  <div style={{ fontSize: 'clamp(11px, 1.1vw, 14px)', color: 'var(--text-secondary)', marginBottom: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1 }}>
                     Predicted Numbers
                   </div>
                   <NumberReveal mainNumbers={prediction.mainNumbers} bonus={prediction.bonus} />
@@ -244,7 +262,7 @@ export default function GeneratePage({
                 {/* Encore */}
                 <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}
                   style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1 }}>Encore</div>
+                  <div style={{ fontSize: 'clamp(11px, 1.1vw, 14px)', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1 }}>Encore</div>
                   <div style={{ display: 'flex', gap: 6 }}>
                     {prediction.encore.split('').map((digit, i) => (
                       <NumberBall key={`encore-${i}`} number={digit} color="#7c3aed" size={38} delay={0.6 + i * 0.06} />
@@ -256,21 +274,21 @@ export default function GeneratePage({
                 {prediction.goldBall && (
                   <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.8 }}
                     style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-                    <div style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1 }}>Gold Ball</div>
+                    <div style={{ fontSize: 'clamp(11px, 1.1vw, 14px)', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1 }}>Gold Ball</div>
                     <div style={{
-                      padding: '8px 20px', borderRadius: 12, background: 'linear-gradient(135deg, #f5c518, #e0a800)',
-                      color: '#1a1a2e', fontSize: 22, fontWeight: 800, letterSpacing: 2,
+                      padding: 'clamp(6px, 0.8vh, 12px) clamp(16px, 2vw, 28px)', borderRadius: 12, background: 'linear-gradient(135deg, #f5c518, #e0a800)',
+                      color: '#1a1a2e', fontSize: 'clamp(18px, 2vw, 28px)', fontWeight: 800, letterSpacing: 2,
                       boxShadow: '0 4px 16px rgba(245, 197, 24, 0.5)',
                     }}>{prediction.goldBall}</div>
                   </motion.div>
                 )}
 
                 {/* Reasoning (collapsible) */}
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.0 }} style={{ width: '100%', maxWidth: 500 }}>
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.0 }} style={{ width: 'min(700px, 80vw)' }}>
                   <button onClick={() => setShowReasoning(!showReasoning)}
                     style={{
                       width: '100%', padding: '10px 16px', borderRadius: 10, background: 'var(--bg-card)',
-                      border: '1px solid var(--border)', color: 'var(--text-secondary)', fontSize: 13,
+                      border: '1px solid var(--border)', color: 'var(--text-secondary)', fontSize: 'clamp(12px, 1.2vw, 15px)',
                       display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer',
                     }}>
                     <span>📊 AI Reasoning</span>
@@ -280,7 +298,7 @@ export default function GeneratePage({
                     {showReasoning && (
                       <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }}
                         exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }} style={{ overflow: 'hidden' }}>
-                        <div style={{ padding: '14px 16px', borderRadius: '0 0 10px 10px', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderTop: 'none', fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.6, maxHeight: 200, overflowY: 'auto' }}>
+                        <div style={{ padding: '14px 16px', borderRadius: '0 0 10px 10px', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderTop: 'none', fontSize: 'clamp(12px, 1.1vw, 14px)', color: 'var(--text-secondary)', lineHeight: 1.6, maxHeight: 'clamp(180px, 25vh, 300px)', overflowY: 'auto' }}>
                           {prediction.reasoning}
                         </div>
                       </motion.div>
@@ -291,7 +309,7 @@ export default function GeneratePage({
                 {/* Generate Again button */}
                 <motion.button initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.2 }}
                   whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }} onClick={handleGenerate}
-                  style={{ padding: '12px 40px', borderRadius: 10, background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-primary)', fontSize: 14, fontWeight: 600 }}>
+                  style={{ padding: 'clamp(10px, 1.2vh, 16px) clamp(32px, 4vw, 52px)', borderRadius: 12, background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-primary)', fontSize: 'clamp(13px, 1.3vw, 16px)', fontWeight: 600 }}>
                   🔄 Generate Again
                 </motion.button>
               </motion.div>
@@ -304,7 +322,7 @@ export default function GeneratePage({
                 flexDirection: 'column',
                 alignItems: 'center',
                 width: '100%',
-                maxWidth: 600,
+                maxWidth: 'min(800px, 85vw)',
                 margin: '0 auto',
                 ...(prediction
                   ? { padding: '4px 0', gap: 4, justifyContent: 'flex-start' }
@@ -313,11 +331,30 @@ export default function GeneratePage({
             >
               {!prediction && (
                 <div style={{
-                  fontSize: 13, fontWeight: 600,
-                  color: isGenerating ? 'var(--accent)' : 'var(--text-secondary)',
-                  textAlign: 'center',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: 10,
                 }}>
-                  {isGenerating ? '🤖 AI is thinking...' : '🤖 AI response (parse failed)'}
+                  <motion.img
+                    src={lotteryIcon}
+                    alt={lotteryName}
+                    animate={{ scale: [1, 1.06, 1] }}
+                    transition={{ repeat: Infinity, duration: 2, ease: 'easeInOut' }}
+                    style={{
+                      width: 'clamp(56px, 6vw, 80px)',
+                      height: 'clamp(56px, 6vw, 80px)',
+                      objectFit: 'contain',
+                      filter: 'drop-shadow(0 0 12px rgba(124, 58, 237, 0.4))',
+                    }}
+                  />
+                  <div style={{
+                    fontSize: 13, fontWeight: 600,
+                    color: isGenerating ? 'var(--accent)' : 'var(--text-secondary)',
+                    textAlign: 'center',
+                  }}>
+                    {isGenerating ? '🤖 AI is thinking...' : '🤖 AI response (parse failed)'}
+                  </div>
                 </div>
               )}
 
@@ -332,31 +369,60 @@ export default function GeneratePage({
               )}
 
               {analysisText && (
-                <div
-                  ref={analysisRef}
-                  style={{
-                    width: '100%',
-                    padding: prediction ? '8px 14px' : '14px 18px',
-                    borderRadius: prediction ? 8 : 12,
-                    background: 'var(--bg-card)',
-                    border: `1px solid ${isGenerating ? 'var(--border)' : 'var(--error)'}`,
-                    fontSize: prediction ? 11 : 12,
-                    color: 'var(--text-secondary)',
-                    lineHeight: prediction ? 1.55 : 1.65,
-                    fontFamily: "'SF Mono', 'Fira Code', 'Cascadia Code', monospace",
-                    whiteSpace: 'pre-wrap',
-                    wordBreak: 'break-word',
-                    maxHeight: prediction ? 160 : 350,
-                    overflowY: 'auto',
-                    opacity: prediction ? 0.75 : 1,
-                  }}
-                >
+                <div style={{ width: '100%' }}>
                   {prediction && (
-                    <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', textAlign: 'center', marginBottom: 6, opacity: 0.7 }}>
-                      🤖 AI analysis log
+                    <button
+                      onClick={() => setShowAnalysisLog(!showAnalysisLog)}
+                      style={{
+                        width: '100%',
+                        padding: '7px 14px',
+                        borderRadius: '10px 10px 0 0',
+                        background: 'var(--bg-card)',
+                        border: '1px solid var(--border)',
+                        borderBottom: showAnalysisLog ? 'none' : '1px solid var(--border)',
+                        color: 'var(--text-secondary)',
+                        fontSize: 12,
+                        fontWeight: 600,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 8,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <img
+                        src={lotteryIcon}
+                        alt=""
+                        style={{ width: 18, height: 18, objectFit: 'contain', opacity: 0.7 }}
+                      />
+                      🤖 AI Analysis Log
+                      <span style={{ fontSize: 10, opacity: 0.5 }}>{showAnalysisLog ? '▲' : '▼'}</span>
+                    </button>
+                  )}
+                  {showAnalysisLog && (
+                    <div
+                      ref={analysisRef}
+                      style={{
+                        width: '100%',
+                        padding: '12px 16px',
+                        borderRadius: prediction ? '0 0 10px 10px' : 12,
+                        background: 'var(--bg-card)',
+                        border: `1px solid ${isGenerating ? 'var(--border)' : 'var(--error)'}`,
+                        borderTop: prediction ? 'none' : '1px solid var(--border)',
+                        fontSize: 12,
+                        color: 'var(--text-secondary)',
+                        lineHeight: 1.65,
+                        fontFamily: "'SF Mono', 'Fira Code', 'Cascadia Code', monospace",
+                        whiteSpace: 'pre-wrap',
+                        wordBreak: 'break-word',
+                        maxHeight: 350,
+                        overflowY: 'auto',
+                        opacity: 1,
+                      }}
+                    >
+                      {analysisText}
                     </div>
                   )}
-                  {analysisText}
                 </div>
               )}
 

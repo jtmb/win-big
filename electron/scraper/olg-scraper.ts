@@ -5,7 +5,8 @@
  * We use Electron's BrowserWindow to render the page and extract numbers.
  */
 
-import { BrowserWindow } from 'electron';
+import { BrowserWindow, ipcMain } from 'electron';
+import * as path from 'path';
 import { initDB, insertDraws, getDrawCount, getDraws, clearDraws } from '../database';
 import type { ParsedDraw, ScraperProgress } from './types';
 
@@ -21,23 +22,50 @@ function getDrawDays(lottery: '649' | 'max'): number[] {
   return lottery === '649' ? [3, 6] : [2, 5];
 }
 
-// ---- BrowserWindow pool helpers ----
-
-const PAGE_WAIT_MS = 6000;    // Time for SPA to render on first load
-const DATE_WAIT_MS = 2500;    // Time after APPLY click for SPA to re-render
+// Resolve the compiled scraper preload path
+const scraperPreloadPath = path.join(__dirname, 'scraper-preload.js');
 
 function createWindow(): BrowserWindow {
   return new BrowserWindow({
     width: 1280,
     height: 900,
     show: false,
-    webPreferences: { nodeIntegration: false, contextIsolation: true },
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: false,
+      preload: scraperPreloadPath,
+    },
+  });
+}
+
+interface ScraperResult {
+  text?: string;
+  error?: string;
+}
+
+/**
+ * Ask a preload script to extract the rendered page text.
+ * Returns a Promise that resolves when the preload script sends back the result.
+ */
+function extractViaPreload(win: BrowserWindow, date: string): Promise<ScraperResult> {
+  return new Promise((resolve) => {
+    const channel = `scraper:result:${win.webContents.id}`;
+
+    const handler = (_event: Electron.IpcMainEvent, result: ScraperResult) => {
+      resolve(result);
+    };
+
+    ipcMain.once(channel, handler);
+
+    // The preload relays its result to our per-window channel
+    win.webContents.send('scraper:extract', date, channel);
   });
 }
 
 /**
- * Scrape a single date using a fresh BrowserWindow.
- * Loads the page, sets the date via input+APPLY, extracts rendered text.
+ * Scrape a single date using a fresh BrowserWindow + preload script.
+ * The preload runs in the page context (bypasses CSP) and extracts DOM text.
  */
 async function scrapeDate(
   lottery: '649' | 'max',
@@ -52,53 +80,21 @@ async function scrapeDate(
   try {
     win = createWindow();
     await win.loadURL(pastUrl);
-    onPhase?.('loading');          // ← milestone 1: page loaded, waiting for SPA render
-    await new Promise(r => setTimeout(r, PAGE_WAIT_MS));
+    onPhase?.('loading');
 
-    // Set date and click APPLY
-    const applied = await win.webContents.executeJavaScript(`
-      (function() {
-        var input = document.getElementById('winning-numbers-calendar-picker-startDate');
-        if (!input) return false;
-        var setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-        setter.call(input, '${date}');
-        input.dispatchEvent(new Event('input', { bubbles: true }));
-        input.dispatchEvent(new Event('change', { bubbles: true }));
-        var btns = document.querySelectorAll('button');
-        for (var i = 0; i < btns.length; i++) {
-          if ((btns[i].textContent || '').trim().toUpperCase() === 'APPLY') {
-            btns[i].click();
-            return true;
-          }
-        }
-        return false;
-      })()
-    `);
+    const result = await extractViaPreload(win, date);
 
-    if (applied) {
-      await new Promise(r => setTimeout(r, DATE_WAIT_MS));
+    if (result.error) {
+      console.warn(`[${index}] Preload error scraping ${date}:`, result.error);
+      return null;
+    }
+    if (!result.text) {
+      console.warn(`[${index}] No text returned from preload for ${date}`);
+      return null;
     }
 
-    onPhase?.('applying');        // ← milestone 2: date applied, about to extract
-
-    // Extract just the past-results section text + Encore element
-    const text: string = await win.webContents.executeJavaScript(`
-      (function() {
-        var el = document.querySelector('.winning-numbers-past-results');
-        if (!el) {
-          var ws = document.querySelector('[class*="winning"]');
-          el = ws || document.body;
-        }
-        // Also grab the Encore number from its dedicated element
-        var encoreEl = document.querySelector('.encore-number');
-        var encore = encoreEl ? encoreEl.textContent.trim() : '';
-        // Append Encore to extracted text so the parser regex can find it
-        return el.innerText + '\nENCORE_NUMBER:' + encore;
-      })()
-    `);
-
-    onPhase?.('extracting');      // ← milestone 3: text extracted, about to parse
-    return parseFn(text);
+    onPhase?.('extracting');
+    return parseFn(result.text);
   } catch (err) {
     console.warn(`[${index}] Error scraping ${date}:`, err);
     return null;
@@ -226,9 +222,9 @@ export async function scrapeResults(
   let neededDates = targetDates.slice(existingCount);
   const poolSize = Math.max(1, Math.min(concurrency, 24)); // clamp 1-24
 
-  // Test mode: only scrape N draws for quick testing
+  // Test mode: only scrape N draws for quick testing (most recent first)
   if (testMode > 0) {
-    neededDates = neededDates.slice(0, testMode);
+    neededDates = neededDates.slice(-testMode);
   }
 
   if (neededDates.length === 0) {

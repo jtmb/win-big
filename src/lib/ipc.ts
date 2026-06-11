@@ -102,7 +102,7 @@ export async function clearDraws(lotteryType: '649' | 'max'): Promise<void> {
 
 export async function clearAllData(): Promise<void> {
   const api = getAPI();
-  if (!api) return;
+  if (!api) throw new Error('Electron API not available — cannot clear database');
   return api.clearAllData();
 }
 

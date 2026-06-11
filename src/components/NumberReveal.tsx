@@ -15,14 +15,14 @@ export default function NumberReveal({ mainNumbers, bonus, delay = 0 }: NumberRe
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ delay }}
-      style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20 }}
+      style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'clamp(14px, 2vh, 24px)' }}
     >
       <div style={{
         display: 'flex',
         flexWrap: 'wrap',
-        gap: 10,
+        gap: 'clamp(8px, 1vw, 14px)',
         justifyContent: 'center',
-        padding: '0 20px',
+        padding: '0 clamp(12px, 2vw, 28px)',
       }}>
         {mainNumbers.map((num, i) => (
           <NumberBall
@@ -40,8 +40,8 @@ export default function NumberReveal({ mainNumbers, bonus, delay = 0 }: NumberRe
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            padding: '0 6px',
-            fontSize: 22,
+            padding: '0 clamp(3px, 0.5vw, 8px)',
+            fontSize: 'clamp(18px, 2vw, 28px)',
             color: 'var(--text-secondary)',
             fontWeight: 300,
           }}

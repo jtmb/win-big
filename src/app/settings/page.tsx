@@ -25,6 +25,7 @@ export default function SettingsPage() {
   // Clear database
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [clearing, setClearing] = useState(false);
+  const [clearError, setClearError] = useState<string | null>(null);
   const [dbStats, setDbStats] = useState<{ draws: number; jobs: number } | null>(null);
 
   useEffect(() => {
@@ -94,12 +95,23 @@ export default function SettingsPage() {
 
   const handleClearAll = async () => {
     setClearing(true);
+    setClearError(null);
     try {
       await clearAllData();
-      setDbStats({ draws: 0, jobs: 0 });
-    } catch { /* ignore */ }
+      // Verify it actually cleared by re-fetching stats
+      const stats = await getDbStats();
+      setDbStats(stats);
+      setShowClearConfirm(false);
+    } catch (err) {
+      console.error('Failed to clear database:', err);
+      setClearError(err instanceof Error ? err.message : 'Unknown error');
+      // Re-fetch stats to show accurate numbers
+      try {
+        const stats = await getDbStats();
+        setDbStats(stats);
+      } catch { /* ignore */ }
+    }
     setClearing(false);
-    setShowClearConfirm(false);
   };
 
   return (
@@ -109,14 +121,14 @@ export default function SettingsPage() {
       <div style={{
         flex: 1,
         overflowY: 'auto',
-        padding: '20px 40px',
+        padding: 'clamp(16px, 2vh, 32px) clamp(20px, 4vw, 60px)',
         display: 'flex',
         flexDirection: 'column',
-        gap: 24,
+        gap: 'clamp(20px, 2.5vh, 30px)',
       }}>
         {/* Provider Selection */}
         <section>
-          <h3 style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1 }}>
+          <h3 style={{ fontSize: 'clamp(12px, 1.2vw, 15px)', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1 }}>
             AI Provider
           </h3>
           <div style={{ display: 'flex', gap: 10 }}>
@@ -133,14 +145,14 @@ export default function SettingsPage() {
                   background: localSettings.aiProvider === provider ? 'var(--accent)' : 'var(--bg-card)',
                   border: localSettings.aiProvider === provider ? 'none' : '1px solid var(--border)',
                   color: localSettings.aiProvider === provider ? '#fff' : 'var(--text-primary)',
-                  fontSize: 14,
+                  fontSize: 'clamp(13px, 1.3vw, 16px)',
                   fontWeight: 600,
                   textAlign: 'center',
                   cursor: 'pointer',
                 }}
               >
                 {provider === 'lmstudio' ? '🖥️ LM Studio' : '☁️ Open AI'}
-                <div style={{ fontSize: 10, fontWeight: 400, opacity: 0.7, marginTop: 2 }}>
+                <div style={{ fontSize: 'clamp(10px, 0.9vw, 12px)', fontWeight: 400, opacity: 0.7, marginTop: 2 }}>
                   {provider === 'lmstudio' ? 'Local (offline)' : 'OpenAI compatible API'}
                 </div>
               </motion.button>
@@ -157,7 +169,7 @@ export default function SettingsPage() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0 }}
             >
-              <h3 style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1 }}>
+              <h3 style={{ fontSize: 'clamp(12px, 1.2vw, 15px)', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1 }}>
                 LM Studio Configuration
               </h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -184,7 +196,7 @@ export default function SettingsPage() {
                         background: 'var(--bg-card)',
                         border: '1px solid var(--border)',
                         color: 'var(--text-primary)',
-                        fontSize: 13,
+                        fontSize: 'clamp(12px, 1.2vw, 15px)',
                         textAlign: 'left',
                         cursor: 'pointer',
                         display: 'flex',
@@ -212,9 +224,9 @@ export default function SettingsPage() {
                         zIndex: 10,
                       }}>
                         {loadingModels ? (
-                          <div style={{ padding: '12px 14px', fontSize: 13, color: 'var(--text-secondary)' }}>Loading models...</div>
+                          <div style={{ padding: '12px 14px', fontSize: 'clamp(12px, 1.2vw, 14px)', color: 'var(--text-secondary)' }}>Loading models...</div>
                         ) : lmModels.length === 0 ? (
-                          <div style={{ padding: '12px 14px', fontSize: 13, color: 'var(--text-secondary)' }}>No models found. Check your Base URL.</div>
+                          <div style={{ padding: '12px 14px', fontSize: 'clamp(12px, 1.2vw, 14px)', color: 'var(--text-secondary)' }}>No models found. Check your Base URL.</div>
                         ) : (
                           lmModels.map((m, i) => (
                             <div
@@ -225,7 +237,7 @@ export default function SettingsPage() {
                               }}
                               style={{
                                 padding: '9px 14px',
-                                fontSize: 12,
+                                fontSize: 'clamp(11px, 1.1vw, 14px)',
                                 color: localSettings.lmstudio.model === m.id ? 'var(--accent)' : 'var(--text-primary)',
                                 background: localSettings.lmstudio.model === m.id ? 'rgba(233, 69, 96, 0.1)' : 'transparent',
                                 cursor: 'pointer',
@@ -251,7 +263,7 @@ export default function SettingsPage() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0 }}
             >
-              <h3 style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1 }}>
+              <h3 style={{ fontSize: 'clamp(12px, 1.2vw, 15px)', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1 }}>
                 Open AI Configuration
               </h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -301,7 +313,7 @@ export default function SettingsPage() {
               background: 'var(--bg-card)',
               border: '1px solid var(--border)',
               color: 'var(--text-primary)',
-              fontSize: 13,
+              fontSize: 'clamp(12px, 1.2vw, 15px)',
               fontWeight: 600,
               cursor: testing ? 'not-allowed' : 'pointer',
             }}
@@ -314,7 +326,7 @@ export default function SettingsPage() {
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
               style={{
-                fontSize: 13,
+                fontSize: 'clamp(12px, 1.2vw, 15px)',
                 fontWeight: 600,
                 color: testResult.success ? 'var(--success)' : 'var(--error)',
               }}
@@ -330,7 +342,7 @@ export default function SettingsPage() {
             borderRadius: 8,
             background: 'rgba(244, 67, 54, 0.1)',
             border: '1px solid rgba(244, 67, 54, 0.3)',
-            fontSize: 12,
+            fontSize: 'clamp(11px, 1vw, 14px)',
             color: 'var(--error)',
             lineHeight: 1.5,
           }}>
@@ -340,7 +352,7 @@ export default function SettingsPage() {
 
         {/* Scraper Concurrency */}
         <section>
-          <h3 style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1 }}>
+          <h3 style={{ fontSize: 'clamp(12px, 1.2vw, 15px)', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1 }}>
             ⚡ Scraper Speed
           </h3>
           <div style={{
@@ -362,7 +374,7 @@ export default function SettingsPage() {
             }}>
               {localSettings.scraperConcurrency || 12}
             </span>
-            <span style={{ fontSize: 11, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+            <span style={{ fontSize: 'clamp(10px, 0.9vw, 13px)', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
               parallel windows
             </span>
           </div>
@@ -373,7 +385,7 @@ export default function SettingsPage() {
 
         {/* Danger Zone — Clear Database */}
         <section>
-          <h3 style={{ fontSize: 13, fontWeight: 700, color: 'var(--error)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1 }}>
+          <h3 style={{ fontSize: 'clamp(12px, 1.2vw, 15px)', fontWeight: 700, color: 'var(--error)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1 }}>
             🗑️ Danger Zone
           </h3>
           <div style={{
@@ -382,19 +394,19 @@ export default function SettingsPage() {
             border: '1px solid rgba(244, 67, 54, 0.25)',
             display: 'flex', flexDirection: 'column', gap: 12,
           }}>
-            <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+            <div style={{ fontSize: 'clamp(12px, 1.2vw, 15px)', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
               {dbStats
                 ? `${dbStats.draws} draws · ${dbStats.jobs} predictions in database`
                 : 'Loading stats...'}
               <br />
-              <span style={{ fontSize: 11, opacity: 0.7 }}>
+              <span style={{ fontSize: 'clamp(10px, 0.9vw, 12px)', opacity: 0.7 }}>
                 This deletes all scraped draws and prediction history. You'll need to re-scrape to generate new predictions.
               </span>
             </div>
             <motion.button
               whileHover={{ scale: 1.03 }}
               whileTap={{ scale: 0.97 }}
-              onClick={() => setShowClearConfirm(true)}
+              onClick={() => { setShowClearConfirm(true); setClearError(null); }}
               disabled={dbStats !== null && dbStats.draws === 0 && dbStats.jobs === 0}
               style={{
                 padding: '10px 20px',
@@ -403,7 +415,7 @@ export default function SettingsPage() {
                   ? 'var(--border)'
                   : 'linear-gradient(135deg, var(--error), #c0392b)',
                 color: '#fff',
-                fontSize: 13,
+                fontSize: 'clamp(12px, 1.2vw, 15px)',
                 fontWeight: 600,
                 cursor: dbStats !== null && dbStats.draws === 0 && dbStats.jobs === 0 ? 'not-allowed' : 'pointer',
                 alignSelf: 'flex-start',
@@ -422,11 +434,11 @@ export default function SettingsPage() {
             whileTap={{ scale: 0.97 }}
             onClick={handleSave}
             style={{
-              padding: '12px 36px',
-              borderRadius: 10,
+              padding: 'clamp(10px, 1.2vh, 16px) clamp(28px, 3vw, 44px)',
+              borderRadius: 12,
               background: 'linear-gradient(135deg, var(--accent), #c0395b)',
               color: '#fff',
-              fontSize: 14,
+              fontSize: 'clamp(13px, 1.3vw, 16px)',
               fontWeight: 700,
             }}
           >
@@ -437,7 +449,7 @@ export default function SettingsPage() {
             <motion.span
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              style={{ fontSize: 13, color: 'var(--success)', fontWeight: 600 }}
+              style={{ fontSize: 'clamp(12px, 1.2vw, 15px)', color: 'var(--success)', fontWeight: 600 }}
             >
               ✓ Saved
             </motion.span>
@@ -486,10 +498,10 @@ export default function SettingsPage() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                   <span style={{ fontSize: 28 }}>⚠️</span>
                   <div>
-                    <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>
+                    <div style={{ fontSize: 'clamp(15px, 1.5vw, 18px)', fontWeight: 700, color: 'var(--text-primary)' }}>
                       Clear All Data?
                     </div>
-                    <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
+                    <div style={{ fontSize: 'clamp(11px, 1vw, 14px)', color: 'var(--text-secondary)', marginTop: 2 }}>
                       This action cannot be undone.
                     </div>
                   </div>
@@ -499,7 +511,7 @@ export default function SettingsPage() {
                   padding: '12px 16px', borderRadius: 10,
                   background: 'rgba(244, 67, 54, 0.08)',
                   border: '1px solid rgba(244, 67, 54, 0.2)',
-                  fontSize: 13, lineHeight: 1.6, color: 'var(--text-secondary)',
+                  fontSize: 'clamp(12px, 1.2vw, 14px)', lineHeight: 1.6, color: 'var(--text-secondary)',
                 }}>
                   You're about to delete{' '}
                   <strong style={{ color: 'var(--error)' }}>
@@ -512,17 +524,30 @@ export default function SettingsPage() {
                   . You'll need to re-scrape draws and re-run predictions.
                 </div>
 
+                {clearError && (
+                  <div style={{
+                    padding: '10px 14px', borderRadius: 8,
+                    background: 'rgba(244, 67, 54, 0.15)',
+                    border: '1px solid rgba(244, 67, 54, 0.4)',
+                    fontSize: 'clamp(11px, 1vw, 13px)',
+                    color: 'var(--error)',
+                    lineHeight: 1.5,
+                  }}>
+                    ❌ Failed to clear: {clearError}
+                  </div>
+                )}
+
                 <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
                   <motion.button
                     whileHover={{ scale: 1.03 }}
                     whileTap={{ scale: 0.97 }}
-                    onClick={() => setShowClearConfirm(false)}
+                    onClick={() => { setShowClearConfirm(false); setClearError(null); }}
                     disabled={clearing}
                     style={{
                       padding: '10px 20px', borderRadius: 8,
                       background: 'var(--bg-secondary)',
                       border: '1px solid var(--border)',
-                      color: 'var(--text-primary)', fontSize: 13, fontWeight: 600,
+                      color: 'var(--text-primary)', fontSize: 'clamp(12px, 1.2vw, 15px)', fontWeight: 600,
                       cursor: clearing ? 'not-allowed' : 'pointer',
                     }}
                   >

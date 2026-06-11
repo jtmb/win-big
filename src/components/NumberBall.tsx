@@ -12,7 +12,7 @@ interface NumberBallProps {
 export default function NumberBall({
   number,
   color = 'var(--accent)',
-  size = 52,
+  size = 0,
   delay = 0,
 }: NumberBallProps) {
   return (
@@ -27,14 +27,14 @@ export default function NumberBall({
       }}
       whileHover={{ scale: 1.15, y: -4 }}
       style={{
-        width: size,
-        height: size,
+        width: size || 'clamp(44px, 5vw, 64px)',
+        height: size || 'clamp(44px, 5vw, 64px)',
         borderRadius: '50%',
         background: `radial-gradient(circle at 35% 35%, ${color}, ${adjustColor(color, -30)})`,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        fontSize: size > 46 ? 22 : 16,
+        fontSize: size && size > 46 ? 22 : size ? 16 : 'clamp(18px, 2.2vw, 26px)',
         fontWeight: 800,
         color: '#fff',
         boxShadow: `0 4px 16px ${color}66`,

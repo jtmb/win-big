@@ -29,7 +29,7 @@ export default function HomePage() {
 
   return (
     <>
-      <NavBar title="WinBig" showSettings />
+      <NavBar showSettings />
 
       <div style={{
         flex: 1,
@@ -37,8 +37,8 @@ export default function HomePage() {
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: '20px 40px',
-        gap: 28,
+        padding: 'clamp(20px, 3vh, 40px) clamp(20px, 4vw, 60px)',
+        gap: 'clamp(20px, 3vh, 40px)',
       }}>
         {/* Title */}
         <motion.div
@@ -48,16 +48,16 @@ export default function HomePage() {
           style={{ textAlign: 'center' }}
         >
           <h1 style={{
-            fontSize: 28,
+            fontSize: 'clamp(26px, 3vw, 44px)',
             fontWeight: 800,
             background: 'linear-gradient(135deg, var(--accent), var(--accent-gold))',
             WebkitBackgroundClip: 'text',
             WebkitTextFillColor: 'transparent',
-            marginBottom: 6,
+            marginBottom: 8,
           }}>
             Choose Your Lottery
           </h1>
-          <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+          <p style={{ fontSize: 'clamp(13px, 1.3vw, 17px)', color: 'var(--text-secondary)' }}>
             Select a lottery to analyze past results and generate predictions
           </p>
         </motion.div>
@@ -70,9 +70,8 @@ export default function HomePage() {
           style={{
             display: 'flex',
             flexDirection: 'column',
-            gap: 14,
-            width: '100%',
-            maxWidth: 440,
+            gap: 'clamp(12px, 1.5vh, 20px)',
+            width: 'min(600px, 55vw)',
           }}
         >
           <LotteryCard
@@ -82,7 +81,7 @@ export default function HomePage() {
             numbers="6 numbers (1–49)"
             selected={lottery === '649'}
             onClick={() => setLottery('649')}
-            icon={<span>🎱</span>}
+            icon={<img src="/lotto649.png" alt="Lotto 6/49" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />}
           />
 
           <LotteryCard
@@ -92,7 +91,7 @@ export default function HomePage() {
             numbers="7 numbers (1–50)"
             selected={lottery === 'max'}
             onClick={() => setLottery('max')}
-            icon={<span>💎</span>}
+            icon={<img src="/lottomax.png" alt="Lotto Max" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />}
           />
         </motion.div>
 
@@ -109,13 +108,13 @@ export default function HomePage() {
           disabled={!lottery}
           onClick={handleContinue}
           style={{
-            padding: '14px 48px',
-            borderRadius: 12,
+            padding: 'clamp(14px, 1.5vh, 20px) clamp(40px, 5vw, 64px)',
+            borderRadius: 14,
             background: lottery
               ? 'linear-gradient(135deg, var(--accent), #c0395b)'
               : 'var(--bg-card)',
             color: '#fff',
-            fontSize: 16,
+            fontSize: 'clamp(16px, 1.6vw, 20px)',
             fontWeight: 700,
             border: lottery ? 'none' : '1px solid var(--border)',
             cursor: lottery ? 'pointer' : 'not-allowed',

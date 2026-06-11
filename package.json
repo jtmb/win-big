@@ -5,7 +5,8 @@
   "main": "dist-electron/main.js",
   "private": true,
   "scripts": {
-    "dev": "concurrently -n next,electron -c cyan,magenta \"next dev -p 6049\" \"wait-on http://localhost:6049 && electron .\"",
+    "dev": "npm run build:electron && concurrently -n next,electron -c cyan,magenta \"next dev -p 6049\" \"wait-on http://localhost:6049 && electron .\"",
+    "dev:electron": "npm run dev",
     "build:next": "next build",
     "build:electron": "tsc -p electron/tsconfig.json",
     "build": "npm run build:next && npm run build:electron",

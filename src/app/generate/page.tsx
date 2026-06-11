@@ -85,13 +85,15 @@ export default function GeneratePage({
 
     try {
       const result = await scrapeAndAnalyze(lottery, testMode ? 5 : undefined);
+      // Set prediction AND stop generating in same sync block → ONE render, no flicker
       setPrediction(result);
       setError(null);
+      setIsGenerating(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An unknown error occurred');
+      setIsGenerating(false);
       // Keep isAnalysisPhase & analysisText visible so user can see what AI produced
     } finally {
-      setIsGenerating(false);
       setActiveJobType(null);
       setScrapingProgress(null);
     }
@@ -166,39 +168,150 @@ export default function GeneratePage({
           </motion.div>
         )}
 
-        {/* Loading / Progress — shown during scraping AND after error if AI produced text */}
-        {(isGenerating || (isAnalysisPhase && analysisText)) && (
+        {/* ===== Scraping progress (spinner + bar) ===== */}
+        {isGenerating && !isAnalysisPhase && (
+          <div style={{
+            flex: 1,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: '100%',
+          }}>
+            <ProgressIndicator
+              message={scrapingProgress?.message || 'Analyzing...'}
+              current={scrapingProgress?.current}
+              total={scrapingProgress?.total}
+              drawCurrent={scrapingProgress?.drawCurrent}
+              drawTotal={scrapingProgress?.drawTotal}
+            />
+          </div>
+        )}
+
+        {/* ===== Analysis + Results ===== */}
+        {isAnalysisPhase && (
           <div style={{
             flex: 1,
             display: 'flex',
             flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
             width: '100%',
-            maxWidth: 600,
-            gap: 16,
+            alignItems: 'center',
           }}>
-            {/* Scraping phase: show spinner + progress bar */}
-            {!isAnalysisPhase && (
-              <ProgressIndicator
-                message={scrapingProgress?.message || 'Analyzing...'}
-                current={scrapingProgress?.current}
-                total={scrapingProgress?.total}
-              />
-            )}
-
-            {/* Analysis phase: show LLM reasoning stream */}
-            {isAnalysisPhase && (
+            {/* Results: fades in when prediction arrives */}
+            {prediction && (
               <motion.div
-                initial={{ opacity: 0, y: 10 }}
+                initial={{ opacity: 0, y: 30 }}
                 animate={{ opacity: 1, y: 0 }}
+                transition={{ type: 'spring', stiffness: 200, damping: 28 }}
                 style={{
-                  width: '100%',
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: 12,
+                  alignItems: 'center',
+                  gap: 24,
+                  width: '100%',
+                  paddingBottom: 8,
                 }}
               >
+                {/* Confidence */}
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.15 }}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    fontSize: 13, color: 'var(--text-secondary)',
+                  }}
+                >
+                  <span>AI Confidence:</span>
+                  <div style={{ width: 100, height: 6, borderRadius: 3, background: 'var(--border)', overflow: 'hidden' }}>
+                    <div style={{
+                      width: `${Math.round(prediction.confidence * 100)}%`,
+                      height: '100%',
+                      background: prediction.confidence > 0.7 ? 'var(--success)' : 'var(--accent-gold)',
+                      borderRadius: 3,
+                    }} />
+                  </div>
+                  <span style={{ fontWeight: 700 }}>{Math.round(prediction.confidence * 100)}%</span>
+                </motion.div>
+
+                {/* Main numbers + bonus */}
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1 }}>
+                    Predicted Numbers
+                  </div>
+                  <NumberReveal mainNumbers={prediction.mainNumbers} bonus={prediction.bonus} />
+                </div>
+
+                {/* Encore */}
+                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}
+                  style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1 }}>Encore</div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    {prediction.encore.split('').map((digit, i) => (
+                      <NumberBall key={`encore-${i}`} number={digit} color="#7c3aed" size={38} delay={0.6 + i * 0.06} />
+                    ))}
+                  </div>
+                </motion.div>
+
+                {/* Gold Ball (649 only) */}
+                {prediction.goldBall && (
+                  <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.8 }}
+                    style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                    <div style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1 }}>Gold Ball</div>
+                    <div style={{
+                      padding: '8px 20px', borderRadius: 12, background: 'linear-gradient(135deg, #f5c518, #e0a800)',
+                      color: '#1a1a2e', fontSize: 22, fontWeight: 800, letterSpacing: 2,
+                      boxShadow: '0 4px 16px rgba(245, 197, 24, 0.5)',
+                    }}>{prediction.goldBall}</div>
+                  </motion.div>
+                )}
+
+                {/* Reasoning (collapsible) */}
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.0 }} style={{ width: '100%', maxWidth: 500 }}>
+                  <button onClick={() => setShowReasoning(!showReasoning)}
+                    style={{
+                      width: '100%', padding: '10px 16px', borderRadius: 10, background: 'var(--bg-card)',
+                      border: '1px solid var(--border)', color: 'var(--text-secondary)', fontSize: 13,
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer',
+                    }}>
+                    <span>📊 AI Reasoning</span>
+                    <span>{showReasoning ? '▲' : '▼'}</span>
+                  </button>
+                  <AnimatePresence>
+                    {showReasoning && (
+                      <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }} style={{ overflow: 'hidden' }}>
+                        <div style={{ padding: '14px 16px', borderRadius: '0 0 10px 10px', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderTop: 'none', fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.6, maxHeight: 200, overflowY: 'auto' }}>
+                          {prediction.reasoning}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </motion.div>
+
+                {/* Generate Again button */}
+                <motion.button initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.2 }}
+                  whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }} onClick={handleGenerate}
+                  style={{ padding: '12px 40px', borderRadius: 10, background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-primary)', fontSize: 14, fontWeight: 600 }}>
+                  🔄 Generate Again
+                </motion.button>
+              </motion.div>
+            )}
+
+            {/* Analysis panel: no layout animation, just conditional styles */}
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                width: '100%',
+                maxWidth: 600,
+                margin: '0 auto',
+                ...(prediction
+                  ? { padding: '4px 0', gap: 4, justifyContent: 'flex-start' }
+                  : { flex: 1, gap: 12, justifyContent: 'center' }),
+              }}
+            >
+              {!prediction && (
                 <div style={{
                   fontSize: 13, fontWeight: 600,
                   color: isGenerating ? 'var(--accent)' : 'var(--text-secondary)',
@@ -206,258 +319,55 @@ export default function GeneratePage({
                 }}>
                   {isGenerating ? '🤖 AI is thinking...' : '🤖 AI response (parse failed)'}
                 </div>
-
-                {/* Progress bar for analysis (indeterminate, only while streaming) */}
-                {isGenerating && (
-                  <div style={{ width: '100%' }}>
-                    <motion.div
-                      animate={{ width: ['0%', '100%'] }}
-                      transition={{ repeat: Infinity, duration: 2, ease: 'easeInOut' }}
-                      style={{
-                        height: 3,
-                        borderRadius: 2,
-                        background: 'linear-gradient(90deg, var(--accent), #7c3aed)',
-                      }}
-                    />
-                  </div>
-                )}
-
-                {/* LLM output in chat-like format */}
-                {analysisText && (
-                  <motion.div
-                    ref={analysisRef}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    style={{
-                      padding: '14px 18px',
-                      borderRadius: 12,
-                      background: 'var(--bg-card)',
-                      border: `1px solid ${isGenerating ? 'var(--border)' : 'var(--error)'}`,
-                      fontSize: 12,
-                      color: 'var(--text-secondary)',
-                      lineHeight: 1.65,
-                      fontFamily: "'SF Mono', 'Fira Code', 'Cascadia Code', monospace",
-                      whiteSpace: 'pre-wrap',
-                      wordBreak: 'break-word',
-                      maxHeight: 350,
-                      overflowY: 'auto',
-                    }}
-                  >
-                    {analysisText}
-                  </motion.div>
-                )}
-
-                {!analysisText && isGenerating && (
-                  <div style={{
-                    padding: '20px',
-                    textAlign: 'center',
-                    fontSize: 12,
-                    color: 'var(--text-secondary)',
-                  }}>
-                    Waiting for AI response...
-                  </div>
-                )}
-              </motion.div>
-            )}
-          </div>
-        )}
-
-        {/* Results */}
-        <AnimatePresence>
-          {prediction && !isGenerating && (
-            <motion.div
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ type: 'spring', stiffness: 200, damping: 25 }}
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: 24,
-                width: '100%',
-                paddingBottom: 20,
-              }}
-            >
-              {/* Confidence */}
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.3 }}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  fontSize: 13,
-                  color: 'var(--text-secondary)',
-                }}
-              >
-                <span>AI Confidence:</span>
-                <div style={{
-                  width: 100,
-                  height: 6,
-                  borderRadius: 3,
-                  background: 'var(--border)',
-                  overflow: 'hidden',
-                }}>
-                  <div style={{
-                    width: `${Math.round(prediction.confidence * 100)}%`,
-                    height: '100%',
-                    background: prediction.confidence > 0.7 ? 'var(--success)' : 'var(--accent-gold)',
-                    borderRadius: 3,
-                  }} />
-                </div>
-                <span style={{ fontWeight: 700 }}>
-                  {Math.round(prediction.confidence * 100)}%
-                </span>
-              </motion.div>
-
-              {/* Main numbers + bonus */}
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1 }}>
-                  Predicted Numbers
-                </div>
-                <NumberReveal
-                  mainNumbers={prediction.mainNumbers}
-                  bonus={prediction.bonus}
-                />
-              </div>
-
-              {/* Encore */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 1.0 }}
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  gap: 8,
-                }}
-              >
-                <div style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1 }}>
-                  Encore
-                </div>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  {prediction.encore.split('').map((digit, i) => (
-                    <NumberBall
-                      key={`encore-${i}`}
-                      number={digit}
-                      color="#7c3aed"
-                      size={38}
-                      delay={1.1 + i * 0.06}
-                    />
-                  ))}
-                </div>
-              </motion.div>
-
-              {/* Gold Ball (649 only) */}
-              {prediction.goldBall && (
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 1.4 }}
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    gap: 8,
-                  }}
-                >
-                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1 }}>
-                    Gold Ball
-                  </div>
-                  <div style={{
-                    padding: '8px 20px',
-                    borderRadius: 12,
-                    background: 'linear-gradient(135deg, #f5c518, #e0a800)',
-                    color: '#1a1a2e',
-                    fontSize: 22,
-                    fontWeight: 800,
-                    letterSpacing: 2,
-                    boxShadow: '0 4px 16px rgba(245, 197, 24, 0.5)',
-                  }}>
-                    {prediction.goldBall}
-                  </div>
-                </motion.div>
               )}
 
-              {/* Reasoning (collapsible) */}
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 1.6 }}
-                style={{ width: '100%', maxWidth: 500 }}
-              >
-                <button
-                  onClick={() => setShowReasoning(!showReasoning)}
+              {!prediction && isGenerating && (
+                <div style={{ width: '100%' }}>
+                  <motion.div
+                    animate={{ width: ['0%', '100%'] }}
+                    transition={{ repeat: Infinity, duration: 2, ease: 'easeInOut' }}
+                    style={{ height: 3, borderRadius: 2, background: 'linear-gradient(90deg, var(--accent), #7c3aed)' }}
+                  />
+                </div>
+              )}
+
+              {analysisText && (
+                <div
+                  ref={analysisRef}
                   style={{
                     width: '100%',
-                    padding: '10px 16px',
-                    borderRadius: 10,
+                    padding: prediction ? '8px 14px' : '14px 18px',
+                    borderRadius: prediction ? 8 : 12,
                     background: 'var(--bg-card)',
-                    border: '1px solid var(--border)',
+                    border: `1px solid ${isGenerating ? 'var(--border)' : 'var(--error)'}`,
+                    fontSize: prediction ? 11 : 12,
                     color: 'var(--text-secondary)',
-                    fontSize: 13,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    cursor: 'pointer',
+                    lineHeight: prediction ? 1.55 : 1.65,
+                    fontFamily: "'SF Mono', 'Fira Code', 'Cascadia Code', monospace",
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                    maxHeight: prediction ? 160 : 350,
+                    overflowY: 'auto',
+                    opacity: prediction ? 0.75 : 1,
                   }}
                 >
-                  <span>📊 AI Reasoning</span>
-                  <span>{showReasoning ? '▲' : '▼'}</span>
-                </button>
-                <AnimatePresence>
-                  {showReasoning && (
-                    <motion.div
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: 'auto', opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
-                      transition={{ duration: 0.2 }}
-                      style={{ overflow: 'hidden' }}
-                    >
-                      <div style={{
-                        padding: '14px 16px',
-                        borderRadius: '0 0 10px 10px',
-                        background: 'var(--bg-secondary)',
-                        border: '1px solid var(--border)',
-                        borderTop: 'none',
-                        fontSize: 12,
-                        color: 'var(--text-secondary)',
-                        lineHeight: 1.6,
-                        maxHeight: 200,
-                        overflowY: 'auto',
-                      }}>
-                        {prediction.reasoning}
-                      </div>
-                    </motion.div>
+                  {prediction && (
+                    <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', textAlign: 'center', marginBottom: 6, opacity: 0.7 }}>
+                      🤖 AI analysis log
+                    </div>
                   )}
-                </AnimatePresence>
-              </motion.div>
+                  {analysisText}
+                </div>
+              )}
 
-              {/* Generate Again button */}
-              <motion.button
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 1.8 }}
-                whileHover={{ scale: 1.04 }}
-                whileTap={{ scale: 0.96 }}
-                onClick={handleGenerate}
-                style={{
-                  padding: '12px 40px',
-                  borderRadius: 10,
-                  background: 'var(--bg-card)',
-                  border: '1px solid var(--border)',
-                  color: 'var(--text-primary)',
-                  fontSize: 14,
-                  fontWeight: 600,
-                }}
-              >
-                🔄 Generate Again
-              </motion.button>
-            </motion.div>
-          )}
-        </AnimatePresence>
+              {!analysisText && isGenerating && !prediction && (
+                <div style={{ padding: '20px', textAlign: 'center', fontSize: 12, color: 'var(--text-secondary)' }}>
+                  Waiting for AI response...
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Error */}
         <AnimatePresence>

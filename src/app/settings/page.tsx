@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import NavBar from '@/components/NavBar';
 import { useApp } from '@/contexts/AppContext';
-import { getSettings, saveSettings, testAiConnection, fetchLmStudioModels } from '@/lib/ipc';
+import { getSettings, saveSettings, testAiConnection, fetchLmStudioModels, clearAllData, getDbStats } from '@/lib/ipc';
 import type { AppSettings } from '@/lib/types';
 
 // Cache models across re-renders so we only fetch once per session
@@ -22,11 +22,17 @@ export default function SettingsPage() {
   const [modelsOpen, setModelsOpen] = useState(false);
   const prefetchedRef = useRef(false);
 
+  // Clear database
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  const [dbStats, setDbStats] = useState<{ draws: number; jobs: number } | null>(null);
+
   useEffect(() => {
     getSettings().then((s) => {
       setSettings(s);
       setLocalSettings({ ...s });
     });
+    getDbStats().then(setDbStats).catch(() => {});
   }, [setSettings]);
 
   // Pre-fetch LM Studio models as soon as settings load
@@ -84,6 +90,16 @@ export default function SettingsPage() {
 
   const updateProvider = (provider: 'lmstudio' | 'openai') => {
     setLocalSettings({ ...localSettings, aiProvider: provider });
+  };
+
+  const handleClearAll = async () => {
+    setClearing(true);
+    try {
+      await clearAllData();
+      setDbStats({ draws: 0, jobs: 0 });
+    } catch { /* ignore */ }
+    setClearing(false);
+    setShowClearConfirm(false);
   };
 
   return (
@@ -355,6 +371,50 @@ export default function SettingsPage() {
           </p>
         </section>
 
+        {/* Danger Zone — Clear Database */}
+        <section>
+          <h3 style={{ fontSize: 13, fontWeight: 700, color: 'var(--error)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1 }}>
+            🗑️ Danger Zone
+          </h3>
+          <div style={{
+            padding: '16px 20px', borderRadius: 12,
+            background: 'rgba(244, 67, 54, 0.06)',
+            border: '1px solid rgba(244, 67, 54, 0.25)',
+            display: 'flex', flexDirection: 'column', gap: 12,
+          }}>
+            <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+              {dbStats
+                ? `${dbStats.draws} draws · ${dbStats.jobs} predictions in database`
+                : 'Loading stats...'}
+              <br />
+              <span style={{ fontSize: 11, opacity: 0.7 }}>
+                This deletes all scraped draws and prediction history. You'll need to re-scrape to generate new predictions.
+              </span>
+            </div>
+            <motion.button
+              whileHover={{ scale: 1.03 }}
+              whileTap={{ scale: 0.97 }}
+              onClick={() => setShowClearConfirm(true)}
+              disabled={dbStats !== null && dbStats.draws === 0 && dbStats.jobs === 0}
+              style={{
+                padding: '10px 20px',
+                borderRadius: 8,
+                background: dbStats !== null && dbStats.draws === 0 && dbStats.jobs === 0
+                  ? 'var(--border)'
+                  : 'linear-gradient(135deg, var(--error), #c0392b)',
+                color: '#fff',
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: dbStats !== null && dbStats.draws === 0 && dbStats.jobs === 0 ? 'not-allowed' : 'pointer',
+                alignSelf: 'flex-start',
+                opacity: dbStats !== null && dbStats.draws === 0 && dbStats.jobs === 0 ? 0.4 : 1,
+              }}
+            >
+              🗑️ Clear All Data
+            </motion.button>
+          </div>
+        </section>
+
         {/* Save */}
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <motion.button
@@ -384,6 +444,113 @@ export default function SettingsPage() {
           )}
         </div>
       </div>
+
+      {/* Clear Database Confirmation Modal */}
+      <AnimatePresence>
+        {showClearConfirm && (
+          <>
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => !clearing && setShowClearConfirm(false)}
+              style={{
+                position: 'fixed', inset: 0, zIndex: 100,
+                background: 'rgba(0, 0, 0, 0.6)',
+                backdropFilter: 'blur(4px)',
+              }}
+            />
+            {/* Dialog */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+              style={{
+                position: 'fixed', inset: 0, zIndex: 101,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                pointerEvents: 'none',
+              }}
+            >
+              <div style={{
+                pointerEvents: 'auto',
+                maxWidth: 400, width: '90%',
+                padding: 28,
+                borderRadius: 16,
+                background: 'var(--bg-card)',
+                border: '1px solid rgba(244, 67, 54, 0.3)',
+                boxShadow: '0 16px 48px rgba(0,0,0,0.5)',
+                display: 'flex', flexDirection: 'column', gap: 20,
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <span style={{ fontSize: 28 }}>⚠️</span>
+                  <div>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>
+                      Clear All Data?
+                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
+                      This action cannot be undone.
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{
+                  padding: '12px 16px', borderRadius: 10,
+                  background: 'rgba(244, 67, 54, 0.08)',
+                  border: '1px solid rgba(244, 67, 54, 0.2)',
+                  fontSize: 13, lineHeight: 1.6, color: 'var(--text-secondary)',
+                }}>
+                  You're about to delete{' '}
+                  <strong style={{ color: 'var(--error)' }}>
+                    {dbStats?.draws ?? 0} draws
+                  </strong>{' '}
+                  and{' '}
+                  <strong style={{ color: 'var(--error)' }}>
+                    {dbStats?.jobs ?? 0} prediction jobs
+                  </strong>
+                  . You'll need to re-scrape draws and re-run predictions.
+                </div>
+
+                <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                  <motion.button
+                    whileHover={{ scale: 1.03 }}
+                    whileTap={{ scale: 0.97 }}
+                    onClick={() => setShowClearConfirm(false)}
+                    disabled={clearing}
+                    style={{
+                      padding: '10px 20px', borderRadius: 8,
+                      background: 'var(--bg-secondary)',
+                      border: '1px solid var(--border)',
+                      color: 'var(--text-primary)', fontSize: 13, fontWeight: 600,
+                      cursor: clearing ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    Cancel
+                  </motion.button>
+                  <motion.button
+                    whileHover={{ scale: 1.03 }}
+                    whileTap={{ scale: 0.97 }}
+                    onClick={handleClearAll}
+                    disabled={clearing}
+                    style={{
+                      padding: '10px 20px', borderRadius: 8,
+                      background: clearing
+                        ? 'var(--border)'
+                        : 'linear-gradient(135deg, var(--error), #c0392b)',
+                      color: '#fff', fontSize: 13, fontWeight: 700,
+                      cursor: clearing ? 'not-allowed' : 'pointer',
+                      minWidth: 100, textAlign: 'center',
+                    }}
+                  >
+                    {clearing ? 'Clearing...' : 'Yes, Delete All'}
+                  </motion.button>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </>
   );
 }

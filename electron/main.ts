@@ -53,9 +53,11 @@ function startNextServer(): Promise<void> {
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
-    width: 800,
-    height: 600,
-    resizable: false,
+    width: 1024,
+    height: 768,
+    minWidth: 800,
+    minHeight: 600,
+    resizable: true,
     autoHideMenuBar: true,
     title: 'WinBig — Lottery Number Predictor',
     webPreferences: {

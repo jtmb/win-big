@@ -125,6 +125,25 @@ export default function HomePage() {
           Continue →
         </motion.button>
 
+        {/* View History link */}
+        <motion.button
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.35 }}
+          onClick={() => router.push('/history')}
+          style={{
+            background: 'none',
+            border: 'none',
+            color: 'var(--text-secondary)',
+            fontSize: 13,
+            cursor: 'pointer',
+            textDecoration: 'underline',
+            textUnderlineOffset: 3,
+          }}
+        >
+          📋 View Job History
+        </motion.button>
+
         {/* Disclaimer */}
         <p style={{
           fontSize: 10,

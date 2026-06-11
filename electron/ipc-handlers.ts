@@ -1,5 +1,5 @@
 import { ipcMain } from 'electron';
-import { initDB, getDraws, clearDraws } from './database';
+import { initDB, getDraws, clearDraws, clearAllData, getDbStats, saveJob, getJobs, getLatestDrawDate } from './database';
 import { loadSettings, saveSettings } from './settings';
 import { scrapeResults } from './scraper/olg-scraper';
 import { analyze } from './ai/analyzer';
@@ -41,11 +41,19 @@ export async function registerIpcHandlers(): Promise<void> {
       try {
         const draws = await scrapeResults(lotteryType, settings.scraperConcurrency || 12, testMode || 0, send, abortController.signal);
         drawsCount = draws.length;
-        send({
-          current: drawsCount,
-          total: drawsCount,
-          message: `Scraped ${drawsCount} draws. Starting analysis...`,
-        });
+        if (drawsCount > 0) {
+          send({
+            current: drawsCount,
+            total: drawsCount,
+            message: `Scraped ${drawsCount} new draws. Starting analysis...`,
+          });
+        } else {
+          send({
+            current: 0,
+            total: 0,
+            message: 'Database already up to date. Skipping scrape, starting analysis...',
+          });
+        }
       } catch (err) {
         if (abortController.signal.aborted) {
           throw new Error('Job cancelled by user');
@@ -65,6 +73,14 @@ export async function registerIpcHandlers(): Promise<void> {
       }
 
       const prediction = await analyze(lotteryType, allDraws, settings, sendAnalysis, abortController.signal);
+
+      // Auto-save successful prediction to job history
+      try {
+        saveJob(lotteryType, allDraws.length, prediction);
+      } catch {
+        // Non-critical — don't fail the whole pipeline if save fails
+      }
+
       return prediction;
     } finally {
       if (currentAbortController === abortController) {
@@ -104,5 +120,25 @@ export async function registerIpcHandlers(): Promise<void> {
     if (!res.ok) throw new Error(`HTTP ${res.status} from ${url}`);
     const data = await res.json() as { data?: { id: string }[] };
     return (data.data || []).map((m: { id: string }) => ({ id: m.id }));
+  });
+
+  // Job history
+  ipcMain.handle('get-job-history', async (_event, lottery?: '649' | 'max') => {
+    return getJobs(lottery);
+  });
+
+  // Latest draw date — used by UI to know if DB is current
+  ipcMain.handle('get-latest-draw-date', async (_event, lottery: '649' | 'max') => {
+    return getLatestDrawDate(lottery);
+  });
+
+  // Clear all database data
+  ipcMain.handle('clear-all-data', async () => {
+    clearAllData();
+  });
+
+  // Get DB stats for settings UI
+  ipcMain.handle('get-db-stats', async () => {
+    return getDbStats();
   });
 }

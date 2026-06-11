@@ -40,7 +40,14 @@ export async function analyze(
   // Try up to 2 times (retry once on parse failure)
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      let fullContent = '';
+      // Qwen reasoning models emit two separate streams:
+      //   reasoning_content = the model's internal monologue (NOT JSON)
+      //   content           = the model's final answer    (should be JSON)
+      // We concatenate reason + answer for the live UI display,
+      // but ONLY use 'content' for JSON parsing to avoid mistaking
+      // curly-braced sets in the reasoning for JSON objects.
+      let reasoningContent = '';
+      let answerContent = '';
 
       const stream = await client.chat.completions.create({
         model,
@@ -55,24 +62,22 @@ export async function analyze(
       });
 
       for await (const chunk of stream) {
-        // Qwen reasoning models put output in reasoning_content; standard models use content
         const delta = chunk.choices[0]?.delta as Record<string, string | null | undefined>;
-        const text = delta?.content || delta?.reasoning_content || '';
-        if (text) {
-          fullContent += text;
-          // Send accumulated text so the UI shows AI thinking in real time
-          onProgress?.(fullContent);
+        const r = delta?.reasoning_content || '';
+        const c = delta?.content || '';
+        if (r) reasoningContent += r;
+        if (c) answerContent += c;
+        // Show EVERYTHING to the user (reasoning + answer) as it streams
+        if (r || c) {
+          onProgress?.(reasoningContent + answerContent);
         }
       }
 
-      const raw = fullContent.trim();
+      // Parse from answerContent (preferred) or the last {…} block in the full text
+      const raw = (answerContent || reasoningContent).trim();
+      if (raw) onProgress?.(raw);
 
-      // Report final text in case onProgress wasn't called (empty stream)
-      if (raw) {
-        onProgress?.(raw);
-      }
-
-      const prediction = parseResponse(raw, maxNumber, mainCount, lotteryType);
+      const prediction = parseResponse(answerContent || reasoningContent, maxNumber, mainCount, lotteryType);
 
       if (prediction) {
         return prediction;
@@ -102,111 +107,126 @@ function parseResponse(
   mainCount: number,
   lotteryType: '649' | 'max'
 ): Prediction | null {
-  // Try to extract JSON from the response (in case AI wraps it in markdown or extra text)
-  let json = raw
-    .replace(/```(?:json)?\s*/gi, '')
-    .replace(/```\s*/g, '')
-    .trim();
+  let json = raw.trim();
+  if (!json) return null;
 
-  // Extract the outermost JSON object
-  const jsonMatch = json.match(/\{[\s\S]*\}/);
-  if (jsonMatch) {
-    json = jsonMatch[0];
+  // Strategy 1: extract from markdown code fences (```json ... ```)
+  const fenceMatch = json.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fenceMatch) {
+    json = fenceMatch[1].trim();
   }
 
-  // ---- Robust JSON repair for LM Studio truncation ----
+  // Strategy 2: find ALL {…} blocks; try each from LAST to FIRST.
+  //             Qwen puts reasoning (with {set} notation) early, JSON answer at end.
+  const braceBlocks = [...json.matchAll(/\{[\s\S]*?\}/g)].map(m => m[0]);
 
-  // 1. Close unclosed strings: if the last quote is unmatched
-  const quoteCount = (json.match(/"/g) || []).length;
-  if (quoteCount % 2 !== 0) {
-    json += '"';
-  }
+  const candidates = fenceMatch
+    ? [json]                               // if we extracted from fences, only try that
+    : braceBlocks.length > 0
+      ? braceBlocks.reverse()              // last block first (most likely the answer)
+      : [json];                            // nothing matched, try whole string
 
-  // 2. Close all unclosed arrays/objects (count opener vs closer)
-  //    Also strip trailing commas before a closing bracket
-  const openBraces = (json.match(/\{/g) || []).length;
-  const closeBraces = (json.match(/\}/g) || []).length;
-  const openBrackets = (json.match(/\[/g) || []).length;
-  const closeBrackets = (json.match(/\]/g) || []).length;
+  // Also try the raw string as a fallback
+  const toTry = [...new Set([...candidates, raw])];
 
-  // Remove trailing comma (common truncation artifact: {"x": [1, 2,)
-  json = json.replace(/,\s*$/, '');
+  // Try each candidate with repair; return the first valid prediction
+  for (const candidate of toTry) {
+    let repaired = candidate;
 
-  // Close arrays first, then objects
-  if (openBrackets > closeBrackets) {
-    json += ']'.repeat(openBrackets - closeBrackets);
-  }
-  if (openBraces > closeBraces) {
-    // If the last non-whitespace char is a key without value, add a placeholder
-    const lastKey = json.match(/"([^"]+)"\s*:\s*$/);
-    if (lastKey) {
-      json += 'null';
+    // ---- Robust JSON repair for LLM truncation ----
+
+    // 1. Close unclosed strings: if the last quote is unmatched
+    const quoteCount = (repaired.match(/"/g) || []).length;
+    if (quoteCount % 2 !== 0) {
+      repaired += '"';
     }
-    json += '}'.repeat(openBraces - closeBraces);
-  }
 
-  // Log the repaired JSON for debugging
-  console.log('[AI Analyzer] Repaired JSON:', json.substring(0, 500));
+    // 2. Close all unclosed arrays/objects (count opener vs closer)
+    const openBraces = (repaired.match(/\{/g) || []).length;
+    const closeBraces = (repaired.match(/\}/g) || []).length;
+    const openBrackets = (repaired.match(/\[/g) || []).length;
+    const closeBrackets = (repaired.match(/\]/g) || []).length;
 
-  try {
-    const parsed = JSON.parse(json);
+    // Remove trailing comma (common truncation artifact: {"x": [1, 2,)
+    repaired = repaired.replace(/,\s*$/, '');
 
-    // Validate main numbers
-    const mainNumbers: number[] = parsed.mainNumbers || [];
-    if (mainNumbers.length !== mainCount) {
-      console.warn(`Expected ${mainCount} main numbers, got ${mainNumbers.length}`);
-      return null;
+    // Close arrays first, then objects
+    if (openBrackets > closeBrackets) {
+      repaired += ']'.repeat(openBrackets - closeBrackets);
     }
-    for (const n of mainNumbers) {
-      if (typeof n !== 'number' || n < 1 || n > maxNumber) {
-        console.warn(`Invalid main number: ${n}`);
-        return null;
+    if (openBraces > closeBraces) {
+      const lastKey = repaired.match(/"([^"]+)"\s*:\s*$/);
+      if (lastKey) {
+        repaired += 'null';
       }
-    }
-    // Check for duplicates
-    if (new Set(mainNumbers).size !== mainNumbers.length) {
-      console.warn('Duplicate main numbers detected');
-      return null;
+      repaired += '}'.repeat(openBraces - closeBraces);
     }
 
-    // Validate bonus
-    const bonus = Number(parsed.bonus);
-    if (isNaN(bonus) || bonus < 1 || bonus > maxNumber) {
-      console.warn(`Invalid bonus: ${parsed.bonus}`);
-      return null;
-    }
-    if (mainNumbers.includes(bonus)) {
-      console.warn('Bonus number matches a main number');
-      return null;
-    }
+    // Log the repaired JSON for debugging
+    console.log('[AI Analyzer] Repaired JSON:', repaired.substring(0, 500));
 
-    // Validate encore
-    const encore = String(parsed.encore || '0').padStart(7, '0').slice(0, 7);
-    if (!/^\d{7}$/.test(encore)) {
-      console.warn(`Invalid encore: ${encore}`);
-      return null;
+    try {
+      const parsed = JSON.parse(repaired);
+
+      // Validate main numbers
+      const mainNumbers: number[] = parsed.mainNumbers || [];
+      if (mainNumbers.length !== mainCount) {
+        console.warn(`Expected ${mainCount} main numbers, got ${mainNumbers.length} — trying next candidate`);
+        continue;
+      }
+      for (const n of mainNumbers) {
+        if (typeof n !== 'number' || n < 1 || n > maxNumber) {
+          console.warn(`Invalid main number: ${n} — trying next candidate`);
+          continue;
+        }
+      }
+      // Check for duplicates
+      if (new Set(mainNumbers).size !== mainNumbers.length) {
+        console.warn('Duplicate main numbers detected — trying next candidate');
+        continue;
+      }
+
+      // Validate bonus
+      const bonus = Number(parsed.bonus);
+      if (isNaN(bonus) || bonus < 1 || bonus > maxNumber) {
+        console.warn(`Invalid bonus: ${parsed.bonus} — trying next candidate`);
+        continue;
+      }
+      if (mainNumbers.includes(bonus)) {
+        console.warn('Bonus number matches a main number — trying next candidate');
+        continue;
+      }
+
+      // Validate encore
+      const encore = String(parsed.encore || '0').padStart(7, '0').slice(0, 7);
+      if (!/^\d{7}$/.test(encore)) {
+        console.warn(`Invalid encore: ${encore} — trying next candidate`);
+        continue;
+      }
+
+      // Validate gold ball (649 only)
+      const goldBall = lotteryType === '649' ? (parsed.goldBall || null) : null;
+      if (lotteryType === '649' && goldBall && !/^\d{8}-\d{2}$/.test(String(goldBall))) {
+        console.warn(`Invalid gold ball: ${goldBall}`);
+        // Non-fatal: set to null, still accept
+      }
+
+      const confidence = Math.min(1, Math.max(0, Number(parsed.confidence) || 0.5));
+      const reasoning = String(parsed.reasoning || 'No reasoning provided.');
+
+      return {
+        mainNumbers,
+        bonus,
+        encore,
+        goldBall: lotteryType === '649' ? (goldBall ? String(goldBall) : null) : null,
+        confidence,
+        reasoning,
+      };
+    } catch (err) {
+      console.warn('Failed to parse candidate — trying next:', (err as Error).message?.slice(0, 80));
+      // continue to next candidate
     }
-
-    // Validate gold ball (649 only)
-    const goldBall = lotteryType === '649' ? (parsed.goldBall || null) : null;
-    if (lotteryType === '649' && goldBall && !/^\d{8}-\d{2}$/.test(String(goldBall))) {
-      console.warn(`Invalid gold ball: ${goldBall}`);
-      // Non-fatal: set to null
-    }
-
-    const confidence = Math.min(1, Math.max(0, Number(parsed.confidence) || 0.5));
-    const reasoning = String(parsed.reasoning || 'No reasoning provided.');
-
-    return {
-      mainNumbers,
-      bonus,
-      encore,
-      goldBall: lotteryType === '649' ? (goldBall ? String(goldBall) : null) : null,
-      confidence,
-      reasoning,
-    };
-  } catch (err) {
-    console.warn('Failed to parse AI response JSON:', err instanceof Error ? err.message : err);
-    return null;
   }
+
+  return null;
 }

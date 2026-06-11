@@ -6,7 +6,7 @@
  */
 
 import { BrowserWindow } from 'electron';
-import { initDB, insertDraws, getDrawCount } from '../database';
+import { initDB, insertDraws, getDrawCount, getDraws, clearDraws } from '../database';
 import type { ParsedDraw, ScraperProgress } from './types';
 
 // ---- Constants ----
@@ -44,6 +44,7 @@ async function scrapeDate(
   date: string,
   parseFn: (text: string) => ParsedDraw | null,
   index: number,
+  onPhase?: (phase: 'loading' | 'applying' | 'extracting') => void,
 ): Promise<ParsedDraw | null> {
   const pastUrl = PAST_URLS[lottery];
   let win: BrowserWindow | null = null;
@@ -51,6 +52,7 @@ async function scrapeDate(
   try {
     win = createWindow();
     await win.loadURL(pastUrl);
+    onPhase?.('loading');          // ← milestone 1: page loaded, waiting for SPA render
     await new Promise(r => setTimeout(r, PAGE_WAIT_MS));
 
     // Set date and click APPLY
@@ -77,16 +79,25 @@ async function scrapeDate(
       await new Promise(r => setTimeout(r, DATE_WAIT_MS));
     }
 
-    // Extract just the past-results section text
+    onPhase?.('applying');        // ← milestone 2: date applied, about to extract
+
+    // Extract just the past-results section text + Encore element
     const text: string = await win.webContents.executeJavaScript(`
       (function() {
         var el = document.querySelector('.winning-numbers-past-results');
-        if (el) return el.innerText;
-        var ws = document.querySelector('[class*="winning"]');
-        return ws ? ws.innerText : document.body.innerText;
+        if (!el) {
+          var ws = document.querySelector('[class*="winning"]');
+          el = ws || document.body;
+        }
+        // Also grab the Encore number from its dedicated element
+        var encoreEl = document.querySelector('.encore-number');
+        var encore = encoreEl ? encoreEl.textContent.trim() : '';
+        // Append Encore to extracted text so the parser regex can find it
+        return el.innerText + '\nENCORE_NUMBER:' + encore;
       })()
     `);
 
+    onPhase?.('extracting');      // ← milestone 3: text extracted, about to parse
     return parseFn(text);
   } catch (err) {
     console.warn(`[${index}] Error scraping ${date}:`, err);
@@ -118,8 +129,11 @@ function parse649Text(text: string): ParsedDraw | null {
 
   const goldBallMatch = clean.match(/(\d{8}-\d{2})/);
   const goldBall = goldBallMatch ? goldBallMatch[1] : null;
-  const encoreMatch = clean.match(/(?:ENCORE|Encore).*?(\d{7})/is);
-  const encore = encoreMatch ? encoreMatch[1] : '0000000';
+
+  // Encore: prefer dedicated element appended by extractor; fallback to regex
+  const encoreDirect = clean.match(/ENCORE_NUMBER:(\d{7})/);
+  const encoreMatch = encoreDirect ? encoreDirect[1] : clean.match(/(?:ENCORE|Encore).*?(\d{7})/is)?.[1];
+  const encore = encoreMatch || '0000000';
 
   return { lottery: '649', drawDate: dateStr, numbers: numbers.slice(0, 6), bonus, encore, goldBall };
 }
@@ -147,8 +161,10 @@ function parseMaxText(text: string): ParsedDraw | null {
 
   if (numbers.length < 7) return null;
 
-  const encoreMatch = clean.match(/(?:ENCORE|Encore).*?(\d{7})/is);
-  const encore = encoreMatch ? encoreMatch[1] : '0000000';
+  // Encore: prefer dedicated element appended by extractor; fallback to regex
+  const encoreDirect = clean.match(/ENCORE_NUMBER:(\d{7})/);
+  const encoreMatch = encoreDirect ? encoreDirect[1] : clean.match(/(?:ENCORE|Encore).*?(\d{7})/is)?.[1];
+  const encore = encoreMatch || '0000000';
 
   return { lottery: 'max', drawDate: dateStr, numbers: numbers.slice(0, 7), bonus, encore, goldBall: null };
 }
@@ -196,6 +212,15 @@ export async function scrapeResults(
 ): Promise<ParsedDraw[]> {
   await initDB();
 
+  // Auto-repair: if any existing draws have the broken Encore fallback ('0000000'),
+  // clear them all so a fresh scrape pulls real Encore data.
+  // (After this fix, no draw should ever have '0000000' unless OLG itself returns that.)
+  const existingDraws = getDraws(lottery, 10);
+  if (existingDraws.length > 0 && existingDraws.some(d => d.encore === '0000000')) {
+    console.warn(`[scraper] Detected broken Encore data — clearing ${getDrawCount(lottery)} draws for re-scrape.`);
+    clearDraws(lottery);
+  }
+
   const existingCount = getDrawCount(lottery);
   const targetDates = generateDrawDates(lottery, 2);
   let neededDates = targetDates.slice(existingCount);
@@ -213,34 +238,74 @@ export async function scrapeResults(
 
   const parseFn = lottery === '649' ? parse649Text : parseMaxText;
   const total = neededDates.length;
+  const totalMilestones = total * 3; // each scrape has 3 phases → smooth bar
   const newDraws: ParsedDraw[] = [];
   let completed = 0;
 
-  onProgress?.({ current: 0, total, message: `Starting parallel scrape of ${total} draws (${poolSize} concurrent)...` });
+  // Watcher: track how many phase milestones each in-flight scrape has hit (0–3)
+  const inFlight = new Map<number, number>();
+
+  const reportProgress = () => {
+    const inflightPhases = [...inFlight.values()].reduce((a, b) => a + b, 0);
+    const current = completed * 3 + inflightPhases;
+    const drawsDone = Math.min(total, Math.floor(current / 3));
+    onProgress?.({ current, total: totalMilestones, drawCurrent: drawsDone, drawTotal: total, message: `Scraping ${drawsDone}/${total}...` });
+  };
+
+  // Heartbeat: calls reportProgress every 400ms so the bar + counter never freeze
+  // between real phase callbacks (e.g. during PAGE_WAIT_MS gaps).
+  const heartbeat = setInterval(reportProgress, 400);
+
+  onProgress?.({ current: 0, total: totalMilestones, drawCurrent: 0, drawTotal: total, message: `Scraping 0/${total} draws (${poolSize} concurrent)...` });
 
   for (let i = 0; i < total; i += poolSize) {
     // Check for cancellation before each batch
     if (signal?.aborted) {
-      onProgress?.({ current: completed, total, message: 'Cancelled by user.' });
+      clearInterval(heartbeat);
+      onProgress?.({ current: completed * 3, total: totalMilestones, drawCurrent: completed, drawTotal: total, message: 'Cancelled by user.' });
       return newDraws;
     }
 
     const batch = neededDates.slice(i, i + poolSize);
 
-    onProgress?.({
-      current: completed,
-      total,
-      message: `Scraping ${completed + 1}-${Math.min(completed + batch.length, total)} of ${total} in parallel...`,
+    // Dispatch batch — each reports its internal phases for smooth progress
+    const wrapped = batch.map((date, j) => {
+      const idx = i + j;
+      inFlight.set(idx, 0); // started, 0 milestones yet
+
+      // Auto-advance: if the real onPhase callbacks haven't fired yet, simulate
+      // forward progress so the bar and counter never freeze during PAGE_WAIT_MS.
+      // Each stagger is offset by 200ms per index so 12 concurrent scrapes don't
+      // all jump at once — they ramp up smoothly.
+      const stagger = j * 200;
+      const t1 = setTimeout(() => { if (inFlight.has(idx)) { inFlight.set(idx, Math.max(1, inFlight.get(idx)!)); } }, 1500 + stagger);
+      const t2 = setTimeout(() => { if (inFlight.has(idx)) { inFlight.set(idx, Math.max(2, inFlight.get(idx)!)); } }, 4000 + stagger);
+      const t3 = setTimeout(() => { if (inFlight.has(idx)) { inFlight.set(idx, Math.max(3, inFlight.get(idx)!)); } }, 7000 + stagger);
+
+      reportProgress();
+
+      return scrapeDate(lottery, date, parseFn, idx, (phase) => {
+        // Each phase hit increments the milestone count for this scrape,
+        // replacing the auto-advance timer value with the real one.
+        const milestones = phase === 'loading' ? 1 : phase === 'applying' ? 2 : 3;
+        inFlight.set(idx, milestones);
+        reportProgress();
+      }).then((result) => {
+        clearTimeout(t1); clearTimeout(t2); clearTimeout(t3);
+        inFlight.delete(idx);
+        completed++;
+        reportProgress();
+        return result;
+      });
     });
 
-    const results = await Promise.all(
-      batch.map((date, j) => scrapeDate(lottery, date, parseFn, i + j))
-    );
+    const results = await Promise.all(wrapped);
 
     const draws = results.filter((d): d is ParsedDraw => d !== null);
     newDraws.push(...draws);
-    completed += batch.length;
   }
+
+  clearInterval(heartbeat);
 
   onProgress?.({ current: completed, total, message: `Done scraping. Saving ${newDraws.length} draws...` });
 

@@ -4,6 +4,9 @@ export interface ScrapingProgress {
   current: number;
   total: number;
   message: string;
+  /** Human-readable draw counts (optional; bar uses current/total milestones) */
+  drawCurrent?: number;
+  drawTotal?: number;
 }
 
 export interface Prediction {
@@ -38,6 +41,14 @@ export interface AppSettings {
     apiKey: string;
     model: string;
   };
+}
+
+export interface JobRecord {
+  id: number;
+  lottery: '649' | 'max';
+  drawCount: number;
+  prediction: Prediction;
+  createdAt: string;
 }
 
 const api = {
@@ -80,6 +91,18 @@ const api = {
 
   cancelJob: (): Promise<void> =>
     ipcRenderer.invoke('cancel-job'),
+
+  getJobHistory: (lottery?: '649' | 'max'): Promise<JobRecord[]> =>
+    ipcRenderer.invoke('get-job-history', lottery),
+
+  getLatestDrawDate: (lottery: '649' | 'max'): Promise<string | null> =>
+    ipcRenderer.invoke('get-latest-draw-date', lottery),
+
+  clearAllData: (): Promise<void> =>
+    ipcRenderer.invoke('clear-all-data'),
+
+  getDbStats: (): Promise<{ draws: number; jobs: number }> =>
+    ipcRenderer.invoke('get-db-stats'),
 };
 
 contextBridge.exposeInMainWorld('winbigAPI', api);

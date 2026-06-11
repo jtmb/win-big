@@ -18,8 +18,8 @@ export default function RootLayout({
         <AppProvider>
           <main
             style={{
-              width: 800,
-              height: 600,
+              width: '100vw',
+              height: '100vh',
               overflow: 'hidden',
               position: 'relative',
               background: 'var(--bg-primary)',

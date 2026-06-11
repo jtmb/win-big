@@ -3,7 +3,7 @@
 // Type-safe wrapper around the Electron preload API.
 // In the renderer, window.winbigAPI is exposed via contextBridge.
 
-import type { Prediction, Draw, AppSettings, ScrapingProgress } from './types';
+import type { Prediction, Draw, AppSettings, ScrapingProgress, JobRecord } from './types';
 
 declare global {
   interface Window {
@@ -18,6 +18,10 @@ declare global {
       onAnalysisProgress: (callback: (text: string) => void) => () => void;
       clearDraws: (lotteryType: '649' | 'max') => Promise<void>;
       cancelJob: () => Promise<void>;
+      getJobHistory: (lottery?: '649' | 'max') => Promise<JobRecord[]>;
+      getLatestDrawDate: (lottery: '649' | 'max') => Promise<string | null>;
+      clearAllData: () => Promise<void>;
+      getDbStats: () => Promise<{ draws: number; jobs: number }>;
     };
   }
 }
@@ -96,8 +100,32 @@ export async function clearDraws(lotteryType: '649' | 'max'): Promise<void> {
   return api.clearDraws(lotteryType);
 }
 
+export async function clearAllData(): Promise<void> {
+  const api = getAPI();
+  if (!api) return;
+  return api.clearAllData();
+}
+
+export async function getDbStats(): Promise<{ draws: number; jobs: number }> {
+  const api = getAPI();
+  if (!api) return { draws: 0, jobs: 0 };
+  return api.getDbStats();
+}
+
 export async function cancelJob(): Promise<void> {
   const api = getAPI();
   if (!api) return;
   return api.cancelJob();
+}
+
+export async function getJobHistory(lottery?: '649' | 'max'): Promise<JobRecord[]> {
+  const api = getAPI();
+  if (!api) return [];
+  return api.getJobHistory(lottery);
+}
+
+export async function getLatestDrawDate(lottery: '649' | 'max'): Promise<string | null> {
+  const api = getAPI();
+  if (!api) return null;
+  return api.getLatestDrawDate(lottery);
 }

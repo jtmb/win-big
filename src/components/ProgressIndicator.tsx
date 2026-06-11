@@ -1,17 +1,43 @@
 'use client';
 
-import { motion } from 'framer-motion';
+import { useEffect, useState } from 'react';
+import { motion, useMotionValue, animate } from 'framer-motion';
 
 interface ProgressIndicatorProps {
   message: string;
   current?: number;
   total?: number;
+  /** Human-readable draw counts shown below the bar (if total > 0) */
+  drawCurrent?: number;
+  drawTotal?: number;
 }
 
-export default function ProgressIndicator({ message, current, total }: ProgressIndicatorProps) {
+export default function ProgressIndicator({ message, current, total, drawCurrent, drawTotal }: ProgressIndicatorProps) {
   const pct = current != null && total != null && total > 0
     ? Math.round((current / total) * 100)
     : 0;
+
+  // Spring-animate the milestone counter so both the bar AND the draw counter
+  // move continuously — they share the same animated value, locked in sync.
+  const animatedCurrent = useMotionValue(current ?? 0);
+  const [displayDrawCount, setDisplayDrawCount] = useState(drawCurrent ?? 0);
+
+  useEffect(() => {
+    const unsub = animatedCurrent.on('change', (v) => {
+      // 3 milestones = 1 draw; derive fractional draw count from milestones
+      setDisplayDrawCount(Math.round(v / 3));
+    });
+    return unsub;
+  }, [animatedCurrent]);
+
+  useEffect(() => {
+    if (current != null) {
+      const controls = animate(animatedCurrent, current, {
+        type: 'spring', stiffness: 100, damping: 20,
+      });
+      return () => controls.stop();
+    }
+  }, [current, animatedCurrent]);
 
   return (
     <motion.div
@@ -72,7 +98,9 @@ export default function ProgressIndicator({ message, current, total }: ProgressI
             textAlign: 'center',
             marginTop: 8,
           }}>
-            {current} / {total}
+            {drawCurrent != null && drawTotal != null
+              ? `${displayDrawCount} / ${drawTotal} draws`
+              : `${current} / ${total}`}
           </div>
         </div>
       )}

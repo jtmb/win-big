@@ -6,6 +6,9 @@ export interface ScrapingProgress {
   current: number;
   total: number;
   message: string;
+  /** Human-readable draw counts (optional; bar uses current/total milestones) */
+  drawCurrent?: number;
+  drawTotal?: number;
 }
 
 export interface Prediction {
@@ -40,4 +43,12 @@ export interface AppSettings {
     apiKey: string;
     model: string;
   };
+}
+
+export interface JobRecord {
+  id: number;
+  lottery: '649' | 'max';
+  drawCount: number;
+  prediction: Prediction;
+  createdAt: string;
 }

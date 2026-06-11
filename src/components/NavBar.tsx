@@ -27,7 +27,7 @@ export default function NavBar({ title, showBack, backTo, showSettings }: NavBar
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'space-between',
-      padding: '12px 20px',
+      padding: '12px 24px',
       borderBottom: '1px solid var(--border)',
       background: 'var(--bg-secondary)',
       minHeight: 52,
@@ -57,49 +57,53 @@ export default function NavBar({ title, showBack, backTo, showSettings }: NavBar
         <span style={{ fontSize: 16, fontWeight: 600 }}>{title}</span>
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        {/* Running job indicator */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginRight: 4 }}>
+        {/* Running job indicator — cohesive pill */}
         {activeJobType && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
-            <motion.button
-              animate={{ opacity: [1, 0.5, 1] }}
-              transition={{ repeat: Infinity, duration: 1.5 }}
-              onClick={() => router.push(`/generate?lottery=${activeJobType}`)}
-              style={{
-                padding: '4px 10px 4px 12px',
-                borderRadius: '8px 0 0 8px',
-                background: 'var(--accent)',
-                color: '#fff',
-                fontSize: 12,
-                fontWeight: 700,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 4,
-                cursor: 'pointer',
-              }}
-              title={`Active ${activeJobType === '649' ? '6/49' : 'Max'} job — click to view`}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '6px 14px',
+              borderRadius: 20,
+              background: 'var(--accent)',
+              color: '#fff',
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: 'pointer',
+              boxShadow: '0 2px 12px rgba(233, 69, 96, 0.35)',
+            }}
+            onClick={() => router.push(`/generate?lottery=${activeJobType}`)}
+            title={`Active ${activeJobType === '649' ? '6/49' : 'Max'} job — click to view`}
+          >
+            <motion.span
+              animate={{ opacity: [1, 0.35, 1] }}
+              transition={{ repeat: Infinity, duration: 1.2, ease: 'easeInOut' }}
+              style={{ fontSize: 10 }}
             >
-              ⏳ Running
-            </motion.button>
-            <motion.button
-              whileHover={{ scale: 1.08 }}
-              whileTap={{ scale: 0.9 }}
-              onClick={handleCancel}
+              ●
+            </motion.span>
+            <span>
+              Running ({activeJobType === '649' ? '6/49' : 'Max'})
+            </span>
+            <motion.span
+              whileHover={{ scale: 1.2, color: '#ffcdd2' }}
+              onClick={(e) => { e.stopPropagation(); handleCancel(); }}
               style={{
-                padding: '4px 9px',
-                borderRadius: '0 8px 8px 0',
-                background: 'rgba(244, 67, 54, 0.65)',
-                color: '#fff',
-                fontSize: 12,
+                fontSize: 14,
                 fontWeight: 700,
-                cursor: 'pointer',
-                borderLeft: '1px solid rgba(255,255,255,0.3)',
+                opacity: 0.8,
+                lineHeight: 1,
+                paddingLeft: 2,
               }}
               title="Cancel job"
             >
               ✕
-            </motion.button>
-          </div>
+            </motion.span>
+          </motion.div>
         )}
 
         {showSettings && (

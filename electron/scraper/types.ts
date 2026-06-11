@@ -13,4 +13,7 @@ export interface ScraperProgress {
   current: number;
   total: number;
   message: string;
+  /** Human-readable draw counts (optional; bar uses current/total milestones) */
+  drawCurrent?: number;
+  drawTotal?: number;
 }

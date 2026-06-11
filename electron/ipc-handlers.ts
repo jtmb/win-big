@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron';
+import { ipcMain, dialog } from 'electron';
 import { initDB, getDraws, clearDraws, clearAllData, getDbStats, saveJob, getJobs, getLatestDrawDate } from './database';
 import { loadSettings, saveSettings } from './settings';
 import { scrapeResults } from './scraper/olg-scraper';
@@ -194,5 +194,42 @@ export async function registerIpcHandlers(): Promise<void> {
       endlessRunner.stop();
       endlessRunner = null;
     }
+  });
+
+  // Export endless training runs as Excel
+  ipcMain.handle('export-endless-runs', async (_event, runs: Array<{ runNumber: number; confidence: number; drawCount: number; status: string; prediction?: Prediction; error?: string }>, lotteryType: '649' | 'max') => {
+    const { default: XLSX } = await import('xlsx');
+    const { filePath } = await dialog.showSaveDialog({
+      title: 'Export Endless Training Runs',
+      defaultPath: `winbig-endless-${lotteryType}-${new Date().toISOString().split('T')[0]}.xlsx`,
+      filters: [{ name: 'Excel Workbook', extensions: ['xlsx'] }],
+    });
+
+    if (!filePath) return { success: false, reason: 'cancelled' };
+
+    const rows = runs.map((r) => ({
+      'Run #': r.runNumber,
+      'Status': r.status,
+      'Confidence %': Math.round(r.confidence * 100),
+      'Draw Count': r.drawCount,
+      'Main Numbers': r.prediction ? r.prediction.mainNumbers.join(', ') : '',
+      'Bonus': r.prediction?.bonus ?? '',
+      'Encore': r.prediction?.encore ?? '',
+      'Gold Ball': r.prediction?.goldBall ?? '',
+      'Reasoning': r.prediction?.reasoning ?? '',
+      'Error': r.error ?? '',
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(rows);
+    // Set column widths
+    ws['!cols'] = [
+      { wch: 6 }, { wch: 10 }, { wch: 14 }, { wch: 12 },
+      { wch: 22 }, { wch: 7 }, { wch: 10 }, { wch: 18 }, { wch: 50 }, { wch: 30 },
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Endless Runs');
+    XLSX.writeFile(wb, filePath);
+
+    return { success: true, filePath };
   });
 }

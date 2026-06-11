@@ -7,8 +7,9 @@
  */
 
 import OpenAI from 'openai';
+import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions/completions';
 import type { Draw, AppSettings, Prediction } from '../preload';
-import { computeStatistics, build649Prompt, buildMaxPrompt } from './index';
+import { computeStatistics, build649Prompt, buildMaxPrompt, build649RefinementPrompt, buildMaxRefinementPrompt } from './index';
 
 /**
  * Run the full analysis pipeline for a lottery type.
@@ -18,12 +19,31 @@ export async function analyze(
   draws: Draw[],
   settings: AppSettings,
   onProgress?: (msg: string) => void,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  previousPrediction?: { mainNumbers: number[]; bonus: number; confidence: number; reasoning: string },
 ): Promise<Prediction> {
   const stats = computeStatistics(draws, lotteryType);
   const prompt = lotteryType === '649' ? build649Prompt(stats) : buildMaxPrompt(stats);
   const maxNumber = lotteryType === '649' ? 49 : 50;
   const mainCount = lotteryType === '649' ? 6 : 7;
+
+  // Build messages — multi-turn refinement if we have previous prediction
+  const sysMsg = 'You are a precise lottery number analyst. Always return ONLY valid JSON. No markdown, no extra text.';
+  const messages: ChatCompletionMessageParam[] = [
+    { role: 'system', content: sysMsg },
+    { role: 'user', content: prompt },
+  ];
+
+  if (previousPrediction) {
+    const { assistantMsg, refinementMsg } =
+      lotteryType === '649'
+        ? build649RefinementPrompt(stats, previousPrediction)
+        : buildMaxRefinementPrompt(stats, previousPrediction);
+    messages.push({ role: 'assistant', content: assistantMsg });
+    messages.push({ role: 'user', content: refinementMsg });
+  }
+
+  const isRefinement = !!previousPrediction;
 
   // Determine which provider to use
   const isLmStudio = settings.aiProvider === 'lmstudio';
@@ -40,22 +60,13 @@ export async function analyze(
   // Try up to 2 times (retry once on parse failure)
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      // Qwen reasoning models emit two separate streams:
-      //   reasoning_content = the model's internal monologue (NOT JSON)
-      //   content           = the model's final answer    (should be JSON)
-      // We concatenate reason + answer for the live UI display,
-      // but ONLY use 'content' for JSON parsing to avoid mistaking
-      // curly-braced sets in the reasoning for JSON objects.
       let reasoningContent = '';
       let answerContent = '';
 
       const stream = await client.chat.completions.create({
         model,
-        messages: [
-          { role: 'system', content: 'You are a precise lottery number analyst. Always return ONLY valid JSON. No markdown, no extra text.' },
-          { role: 'user', content: prompt },
-        ],
-        temperature: 0.3,
+        messages,
+        temperature: isRefinement ? 0.25 : 0.3,
         max_tokens: 8192,
         stream: true,
         ...(signal ? { signal } : {}),

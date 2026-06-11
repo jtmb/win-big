@@ -7,7 +7,7 @@ import NumberReveal from '@/components/NumberReveal';
 import NumberBall from '@/components/NumberBall';
 import ProgressIndicator from '@/components/ProgressIndicator';
 import { useApp } from '@/contexts/AppContext';
-import { scrapeAndAnalyze, onProgress, onAnalysisProgress, getSettings, endlessStart, endlessPause, endlessResume, endlessStop, onEndlessProgress } from '@/lib/ipc';
+import { scrapeAndAnalyze, onProgress, onAnalysisProgress, getSettings, endlessStart, endlessPause, endlessResume, endlessStop, onEndlessProgress, exportEndlessRuns } from '@/lib/ipc';
 import type { ScrapingProgress, EndlessProgress } from '@/lib/types';
 
 export default function GeneratePage({
@@ -197,6 +197,14 @@ export default function GeneratePage({
     setIsGenerating(false);
     setEndlessStatus('stopped');
   }, [setIsGenerating]);
+
+  const handleExport = useCallback(async () => {
+    if (endlessRuns.length === 0) return;
+    const result = await exportEndlessRuns(endlessRuns, lottery);
+    if (!result.success && result.reason !== 'cancelled') {
+      setError(result.reason || 'Export failed');
+    }
+  }, [endlessRuns, lottery, setError]);
 
   const lotteryName = lottery === '649' ? 'Lotto 6/49' : 'Lotto Max';
   const providerName = settings?.aiProvider === 'openai' ? 'Open AI' : 'LM Studio';
@@ -474,7 +482,7 @@ export default function GeneratePage({
                     }}>
                       <span>📊 Training Runs ({endlessRuns.length})</span>
                       <span style={{ fontSize: 10, opacity: 0.7 }}>
-                        🎯 Target: 90%
+                        🎯 Target: {Math.round((settings?.endlessConfidenceTarget ?? 0.9) * 100)}%
                         {endlessStatus === 'running' && ' · Running'}
                         {endlessStatus === 'paused' && ' · Paused'}
                         {endlessStatus === 'stopped' && ' · Stopped'}
@@ -498,7 +506,7 @@ export default function GeneratePage({
                           <div style={{
                             width: `${Math.round(run.confidence * 100)}%`,
                             height: '100%',
-                            background: run.confidence >= 0.9 ? 'var(--success)' : run.confidence >= 0.7 ? 'var(--accent-gold)' : 'var(--accent)',
+                            background: run.confidence >= (settings?.endlessConfidenceTarget ?? 0.9) ? 'var(--success)' : run.confidence >= 0.7 ? 'var(--accent-gold)' : 'var(--accent)',
                             borderRadius: 2,
                             transition: 'width 0.3s',
                           }} />
@@ -663,6 +671,15 @@ export default function GeneratePage({
                     style={{ padding: 'clamp(10px, 1.2vh, 16px) clamp(32px, 4vw, 52px)', borderRadius: 12, background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-primary)', fontSize: 'clamp(13px, 1.3vw, 16px)', fontWeight: 600 }}>
                     🔄 Generate Again
                   </motion.button>
+                  {(endlessStatus === 'stopped' || endlessStatus === 'complete') && endlessRuns.length > 0 && (
+                    <motion.button
+                      initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+                      whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
+                      onClick={handleExport}
+                      style={{ padding: 'clamp(10px, 1.2vh, 16px) clamp(24px, 3vw, 40px)', borderRadius: 12, background: 'rgba(46,213,115,0.12)', border: '1px solid var(--success)', color: 'var(--success)', fontSize: 'clamp(13px, 1.3vw, 16px)', fontWeight: 600, cursor: 'pointer' }}>
+                      📥 Export Runs (.xlsx)
+                    </motion.button>
+                  )}
                 </motion.div>
               </motion.div>
             )}
@@ -712,7 +729,7 @@ export default function GeneratePage({
                       fontSize: 11, color: 'var(--text-secondary)', textAlign: 'center',
                       opacity: 0.8,
                     }}>
-                      Run #{endlessRuns.length + 1} · 🎯 Target: 90%
+                      Run #{endlessRuns.length + 1} · 🎯 Target: {Math.round((settings?.endlessConfidenceTarget ?? 0.9) * 100)}%
                     </div>
                   )}
                 </div>

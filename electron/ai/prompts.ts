@@ -106,6 +106,70 @@ Return ONLY valid JSON. No markdown, no explanation outside the JSON. Format:
 }`;
 }
 
+// ---- Refinement prompts for endless training loop ----
+
+interface PreviousPrediction {
+  mainNumbers: number[];
+  bonus: number;
+  confidence: number;
+  reasoning: string;
+}
+
+function buildRefinementPrompt(stats: DrawStatistics, prev: PreviousPrediction): { assistantMsg: string; refinementMsg: string } {
+  const assistantMsg = JSON.stringify({
+    mainNumbers: prev.mainNumbers,
+    bonus: prev.bonus,
+    encore: "0000000",
+    goldBall: null,
+    confidence: prev.confidence,
+    reasoning: prev.reasoning,
+  });
+
+  // Build a critique of the previous prediction based on what it actually did
+  const prevSet = new Set(prev.mainNumbers);
+  const freqSorted = Object.entries(stats.numberFrequency)
+    .sort(([, a], [, b]) => b - a)
+    .map(([n]) => Number(n));
+  const top20 = new Set(freqSorted.slice(0, 20));
+  const coldSorted = Object.entries(stats.numberDaysSince)
+    .sort(([, a], [, b]) => b - a)
+    .map(([n]) => Number(n));
+  const coldest10 = new Set(coldSorted.slice(0, 10));
+  const hotNums = Object.entries(stats.numberHotStreaks)
+    .filter(([, s]) => s >= 2)
+    .map(([n]) => Number(n));
+
+  const top20Hits = prev.mainNumbers.filter((n) => top20.has(n)).length;
+  const coldHits = prev.mainNumbers.filter((n) => coldest10.has(n)).length;
+  const hotHits = prev.mainNumbers.filter((n) => hotNums.includes(n)).length;
+
+  const critique = [
+    `Top-20 frequency coverage: ${top20Hits}/6 main numbers.`,
+    `Coldest-10 coverage: ${coldHits}/6.`,
+    `Hot streak (≥2) coverage: ${hotHits}/6.`,
+    prev.mainNumbers.some((n) => prev.bonus === n) ? `Bonus ${prev.bonus} clashes with a main number — invalid.` : '',
+  ].filter(Boolean).join(' ');
+
+  const refinementMsg = `That was your previous prediction.
+
+Now CRITICALLY RE-EXAMINE it. Here is an automated quality check:
+${critique}
+
+Consider: Are you over-weighting frequency and under-weighting recency? Could a different balance of hot numbers, cold numbers, and mid-frequency numbers produce a more robust prediction? Try a genuinely different combination — don't just tweak one or two numbers. Look for patterns you may have missed in the cold streaks or mid-tier frequencies.
+
+Return ONLY valid JSON with your best honest prediction and a truthful confidence score.`;
+
+  return { assistantMsg, refinementMsg };
+}
+
+export function build649RefinementPrompt(stats: DrawStatistics, prev: PreviousPrediction) {
+  return buildRefinementPrompt(stats, prev);
+}
+
+export function buildMaxRefinementPrompt(stats: DrawStatistics, prev: PreviousPrediction) {
+  return buildRefinementPrompt(stats, prev);
+}
+
 // ---- Helpers ----
 
 function topN(freq: Record<string | number, number>, n: number): string[] {

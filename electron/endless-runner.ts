@@ -19,7 +19,7 @@ export interface EndlessProgress {
   error?: string;
 }
 
-const CONFIDENCE_TARGET = 0.9;
+const ENDLESS_DELAY_MS = 2000; // brief pause between runs
 
 export class EndlessRunner {
   private abortController: AbortController | null = null;
@@ -27,6 +27,7 @@ export class EndlessRunner {
   private pauseResolve: (() => void) | null = null;
   private isStopped = false;
   private runNumber = 0;
+  private hasReportedComplete = false;
 
   /**
    * Main loop. Runs in the background; communicates with the renderer via
@@ -43,6 +44,7 @@ export class EndlessRunner {
     this.isPaused = false;
     this.isStopped = false;
     this.runNumber = 0;
+    this.hasReportedComplete = false;
 
     // Forward external abort to our internal controller
     if (signal) {
@@ -50,14 +52,16 @@ export class EndlessRunner {
     }
 
     const settings = loadSettings();
+    const confidenceTarget = settings.endlessConfidenceTarget ?? 0.9;
+    let lastPrediction: { mainNumbers: number[]; bonus: number; confidence: number; reasoning: string } | undefined;
 
     try {
-      while (!this.abortController.signal.aborted && !this.isStopped) {
+      while (!this.isStopped) {
         // ---- Pause gate ----
         if (this.isPaused) {
           onProgress({ runNumber: this.runNumber, confidence: 0, drawCount: 0, status: 'paused' });
           await new Promise<void>((resolve) => { this.pauseResolve = resolve; });
-          if (this.abortController.signal.aborted || this.isStopped) break;
+          if (this.isStopped) break;
           // Resume
           this.isPaused = false;
           this.pauseResolve = null;
@@ -81,15 +85,15 @@ export class EndlessRunner {
               settings.scraperConcurrency || 12,
               0, // not test mode — always full scrape
               onScrapingProgress,
-              this.abortController.signal,
+              this.abortController?.signal,
               settings.scrapeDepthYears ?? 2,
             );
 
-            if (this.abortController.signal.aborted || this.isStopped) break;
+            if (this.isStopped) break;
           }
 
           // ---- Check cancel ----
-          if (this.abortController.signal.aborted || this.isStopped) break;
+          if (this.isStopped) break;
 
           // ---- Phase 2: Load all draws & analyze ----
           const allDraws = getDraws(lotteryType);
@@ -116,10 +120,19 @@ export class EndlessRunner {
             allDraws,
             settings,
             onAnalysisText,
-            this.abortController.signal,
+            this.abortController?.signal,
+            lastPrediction,
           );
 
-          if (this.abortController.signal.aborted || this.isStopped) break;
+          if (this.isStopped) break;
+
+          // Store for next iteration's refinement
+          lastPrediction = {
+            mainNumbers: prediction.mainNumbers,
+            bonus: prediction.bonus,
+            confidence: prediction.confidence,
+            reasoning: prediction.reasoning,
+          };
 
           // ---- Save to history ----
           try {
@@ -129,7 +142,8 @@ export class EndlessRunner {
           }
 
           // ---- Check confidence ----
-          if (prediction.confidence >= CONFIDENCE_TARGET) {
+          if (prediction.confidence >= confidenceTarget && !this.hasReportedComplete) {
+            this.hasReportedComplete = true;
             onProgress({
               runNumber: this.runNumber,
               confidence: prediction.confidence,
@@ -137,7 +151,7 @@ export class EndlessRunner {
               status: 'complete',
               prediction,
             });
-            break;
+            // Keep going — don't break. The UI can stop manually.
           }
 
           // ---- Report iteration result ----
@@ -149,9 +163,12 @@ export class EndlessRunner {
             prediction,
           });
 
+          // Brief pause between iterations — yields back to event loop
+          await new Promise<void>((resolve) => setTimeout(resolve, ENDLESS_DELAY_MS));
+
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
-          if (this.abortController.signal.aborted || this.isStopped) break;
+          if (this.isStopped) break;
 
           onProgress({
             runNumber: this.runNumber,
@@ -197,9 +214,9 @@ export class EndlessRunner {
       this.pauseResolve();
       this.pauseResolve = null;
     }
+    // Abort the controller but DON'T null it — the loop still references it
     if (this.abortController) {
       this.abortController.abort();
-      this.abortController = null;
     }
   }
 }

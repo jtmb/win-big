@@ -53,8 +53,9 @@ export async function getSettings(): Promise<AppSettings> {
   if (!api) {
     return {
       aiProvider: 'lmstudio',
-      scraperConcurrency: 12,
+      scraperConcurrency: 6,
       scrapeDepthYears: 2,
+      endlessConfidenceTarget: 0.9,
       lmstudio: { baseUrl: 'http://192.168.0.13:1234/v1', model: '' },
       openai: { baseUrl: 'https://api.openai.com/v1', apiKey: '', model: 'gpt-4o' },
     };
@@ -164,4 +165,10 @@ export function onEndlessProgress(callback: (evt: EndlessProgress) => void): () 
   const api = getAPI();
   if (!api) return () => {};
   return api.onEndlessProgress(callback);
+}
+
+export async function exportEndlessRuns(runs: EndlessProgress[], lotteryType: '649' | 'max'): Promise<{ success: boolean; reason?: string; filePath?: string }> {
+  const api = getAPI();
+  if (!api) return { success: false, reason: 'Electron API not available' };
+  return api.exportEndlessRuns(runs, lotteryType);
 }

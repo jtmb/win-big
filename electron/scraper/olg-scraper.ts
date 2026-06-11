@@ -26,7 +26,7 @@ function getDrawDays(lottery: '649' | 'max'): number[] {
 const scraperPreloadPath = path.join(__dirname, 'scraper-preload.js');
 
 function createWindow(): BrowserWindow {
-  return new BrowserWindow({
+  const win = new BrowserWindow({
     width: 1280,
     height: 900,
     show: false,
@@ -37,6 +37,11 @@ function createWindow(): BrowserWindow {
       preload: scraperPreloadPath,
     },
   });
+  // Spoof a realistic Chrome user-agent so OLG doesn't block us as a bot
+  win.webContents.setUserAgent(
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+  );
+  return win;
 }
 
 interface ScraperResult {
@@ -73,11 +78,17 @@ async function scrapeDate(
   parseFn: (text: string) => ParsedDraw | null,
   index: number,
   onPhase?: (phase: 'loading' | 'applying' | 'extracting') => void,
+  staggerMs: number = 0,
 ): Promise<ParsedDraw | null> {
   const pastUrl = PAST_URLS[lottery];
   let win: BrowserWindow | null = null;
 
   try {
+    // Stagger loadURL calls so OLG doesn't see a burst and block us
+    if (staggerMs > 0) {
+      await new Promise((r) => setTimeout(r, staggerMs));
+    }
+
     win = createWindow();
     await win.loadURL(pastUrl);
     onPhase?.('loading');
@@ -287,7 +298,7 @@ export async function scrapeResults(
         const milestones = phase === 'loading' ? 1 : phase === 'applying' ? 2 : 3;
         inFlight.set(idx, milestones);
         reportProgress();
-      }).then((result) => {
+      }, j * 800).then((result) => {
         clearTimeout(t1); clearTimeout(t2); clearTimeout(t3);
         inFlight.delete(idx);
         completed++;

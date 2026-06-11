@@ -35,6 +35,7 @@ export interface AppSettings {
   aiProvider: 'lmstudio' | 'openai';
   scraperConcurrency: number;
   scrapeDepthYears: number;
+  endlessConfidenceTarget: number;
   lmstudio: {
     baseUrl: string;
     model: string;

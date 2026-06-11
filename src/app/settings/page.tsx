@@ -364,7 +364,7 @@ export default function SettingsPage() {
               type="range"
               min={1}
               max={24}
-              value={localSettings.scraperConcurrency || 12}
+              value={localSettings.scraperConcurrency || 6}
               onChange={(e) => setLocalSettings({ ...localSettings, scraperConcurrency: parseInt(e.target.value, 10) })}
               style={{ flex: 1, accentColor: 'var(--accent)' }}
             />
@@ -372,7 +372,7 @@ export default function SettingsPage() {
               fontSize: 18, fontWeight: 700, color: 'var(--accent)',
               minWidth: 36, textAlign: 'center',
             }}>
-              {localSettings.scraperConcurrency || 12}
+              {localSettings.scraperConcurrency || 6}
             </span>
             <span style={{ fontSize: 'clamp(10px, 0.9vw, 13px)', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
               parallel windows
@@ -413,6 +413,36 @@ export default function SettingsPage() {
           </div>
           <p style={{ fontSize: 10, color: 'var(--text-secondary)', marginTop: 6, marginLeft: 4 }}>
             How many years of past draws to scrape. More = better AI context but longer scrape. Default: 2 years
+          </p>
+        </section>
+
+        {/* Endless Confidence Target */}
+        <section>
+          <h3 style={{ fontSize: 'clamp(12px, 1.2vw, 15px)', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1 }}>
+            🎯 Endless Training Target
+          </h3>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 16,
+            padding: '14px 18px', borderRadius: 12,
+            background: 'var(--bg-card)', border: '1px solid var(--border)',
+          }}>
+            <input
+              type="range"
+              min={50}
+              max={99}
+              value={Math.round((localSettings.endlessConfidenceTarget ?? 0.9) * 100)}
+              onChange={(e) => setLocalSettings({ ...localSettings, endlessConfidenceTarget: parseInt(e.target.value, 10) / 100 })}
+              style={{ flex: 1, accentColor: 'var(--accent)' }}
+            />
+            <span style={{
+              fontSize: 18, fontWeight: 700, color: 'var(--accent)',
+              minWidth: 42, textAlign: 'center',
+            }}>
+              {Math.round((localSettings.endlessConfidenceTarget ?? 0.9) * 100)}%
+            </span>
+          </div>
+          <p style={{ fontSize: 10, color: 'var(--text-secondary)', marginTop: 6, marginLeft: 4 }}>
+            Endless mode keeps refining predictions until this confidence % is reached, then keeps going. Default: 90%
           </p>
         </section>
 

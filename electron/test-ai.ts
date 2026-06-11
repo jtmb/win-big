@@ -8,8 +8,9 @@ import type { Draw, AppSettings } from './preload';
 // Don't use loadSettings() — needs Electron's app.getPath()
 const SETTINGS: AppSettings = {
   aiProvider: 'lmstudio',
-  scraperConcurrency: 12,
+  scraperConcurrency: 6,
   scrapeDepthYears: 2,
+  endlessConfidenceTarget: 0.9,
   lmstudio: {
     baseUrl: 'http://192.168.0.13:1234/v1',
     model: '',

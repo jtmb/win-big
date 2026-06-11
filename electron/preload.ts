@@ -33,6 +33,7 @@ export interface AppSettings {
   aiProvider: 'lmstudio' | 'openai';
   scraperConcurrency: number;
   scrapeDepthYears: number;
+  endlessConfidenceTarget: number;
   lmstudio: {
     baseUrl: string;
     model: string;
@@ -125,6 +126,9 @@ const api = {
 
   endlessStop: (): Promise<void> =>
     ipcRenderer.invoke('endless:stop'),
+
+  exportEndlessRuns: (runs: EndlessProgress[], lotteryType: '649' | 'max'): Promise<{ success: boolean; reason?: string; filePath?: string }> =>
+    ipcRenderer.invoke('export-endless-runs', runs, lotteryType),
 
   onEndlessProgress: (callback: (evt: EndlessProgress) => void) => {
     const handler = (_event: IpcRendererEvent, evt: EndlessProgress) => callback(evt);

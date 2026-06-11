@@ -1,0 +1,72 @@
+{
+  "name": "winbig",
+  "version": "1.0.0",
+  "description": "OLG Lottery Number Predictor — analyze past results with AI to suggest numbers",
+  "main": "dist-electron/main.js",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -n next,electron -c cyan,magenta \"next dev -p 6049\" \"wait-on http://localhost:6049 && electron .\"",
+    "build:next": "next build",
+    "build:electron": "tsc -p electron/tsconfig.json",
+    "build": "npm run build:next && npm run build:electron",
+    "package": "npm run build && electron-builder --win",
+    "start": "next start -p 6049"
+  },
+  "dependencies": {
+    "cheerio": "^1.0.0",
+    "framer-motion": "^11.15.0",
+    "next": "^16.0.0",
+    "openai": "^4.80.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "sql.js": "^1.12.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@types/sql.js": "^1.4.11",
+    "concurrently": "^9.1.0",
+    "electron": "^33.3.0",
+    "electron-builder": "^25.1.0",
+    "typescript": "^5.7.0",
+    "wait-on": "^8.0.0"
+  },
+  "build": {
+    "appId": "com.winbig.app",
+    "productName": "WinBig",
+    "directories": {
+      "output": "release",
+      "buildResources": "public"
+    },
+    "files": [
+      "dist-electron/**/*",
+      ".next/**/*",
+      "public/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": ".next/standalone",
+        "to": "next-standalone"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "public/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  }
+}

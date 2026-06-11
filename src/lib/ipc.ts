@@ -1,0 +1,103 @@
+'use client';
+
+// Type-safe wrapper around the Electron preload API.
+// In the renderer, window.winbigAPI is exposed via contextBridge.
+
+import type { Prediction, Draw, AppSettings, ScrapingProgress } from './types';
+
+declare global {
+  interface Window {
+    winbigAPI?: {
+      scrapeAndAnalyze: (lotteryType: '649' | 'max', testMode?: number) => Promise<Prediction>;
+      getDrawHistory: (lotteryType: '649' | 'max', limit?: number) => Promise<Draw[]>;
+      getSettings: () => Promise<AppSettings>;
+      saveSettings: (settings: AppSettings) => Promise<void>;
+      testAiConnection: (provider: 'lmstudio' | 'openai', config: Record<string, string>) => Promise<{ success: boolean; message: string }>;
+      fetchLmStudioModels: (baseUrl: string) => Promise<{ id: string }[]>;
+      onProgress: (callback: (progress: ScrapingProgress) => void) => () => void;
+      onAnalysisProgress: (callback: (text: string) => void) => () => void;
+      clearDraws: (lotteryType: '649' | 'max') => Promise<void>;
+      cancelJob: () => Promise<void>;
+    };
+  }
+}
+
+function getAPI() {
+  if (typeof window === 'undefined') return null;
+  return window.winbigAPI ?? null;
+}
+
+export async function scrapeAndAnalyze(lotteryType: '649' | 'max', testMode?: number): Promise<Prediction> {
+  const api = getAPI();
+  if (!api) throw new Error('Electron API not available');
+  return api.scrapeAndAnalyze(lotteryType, testMode);
+}
+
+export async function getDrawHistory(lotteryType: '649' | 'max', limit?: number): Promise<Draw[]> {
+  const api = getAPI();
+  if (!api) return [];
+  return api.getDrawHistory(lotteryType, limit);
+}
+
+export async function getSettings(): Promise<AppSettings> {
+  const api = getAPI();
+  if (!api) {
+    return {
+      aiProvider: 'lmstudio',
+      scraperConcurrency: 12,
+      lmstudio: { baseUrl: 'http://192.168.0.13:1234/v1', model: '' },
+      openai: { baseUrl: 'https://api.openai.com/v1', apiKey: '', model: 'gpt-4o' },
+    };
+  }
+  return api.getSettings();
+}
+
+export async function saveSettings(settings: AppSettings): Promise<void> {
+  const api = getAPI();
+  if (!api) return;
+  return api.saveSettings(settings);
+}
+
+export async function testAiConnection(provider: 'lmstudio' | 'openai', config: Record<string, string>): Promise<{ success: boolean; message: string }> {
+  const api = getAPI();
+  if (!api) return { success: false, message: 'Electron API not available' };
+  return api.testAiConnection(provider, config);
+}
+
+export async function fetchLmStudioModels(baseUrl: string): Promise<{ id: string }[]> {
+  const api = getAPI();
+  if (api) return api.fetchLmStudioModels(baseUrl);
+
+  // Fallback: proxy through Next.js API route (avoids CORS issues in browser dev mode)
+  const res = await fetch(`/api/lmstudio-models?baseUrl=${encodeURIComponent(baseUrl)}`);
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+    throw new Error((errData as { error: string }).error || `HTTP ${res.status}`);
+  }
+  const data = await res.json() as { data?: { id: string }[] };
+  return (data.data || []).map((m: { id: string }) => ({ id: m.id }));
+}
+
+export function onProgress(callback: (progress: ScrapingProgress) => void): () => void {
+  const api = getAPI();
+  if (!api) return () => {};
+  return api.onProgress(callback);
+}
+
+export function onAnalysisProgress(callback: (text: string) => void): () => void {
+  const api = getAPI();
+  if (!api) return () => {};
+  return api.onAnalysisProgress(callback);
+}
+
+export async function clearDraws(lotteryType: '649' | 'max'): Promise<void> {
+  const api = getAPI();
+  if (!api) return;
+  return api.clearDraws(lotteryType);
+}
+
+export async function cancelJob(): Promise<void> {
+  const api = getAPI();
+  if (!api) return;
+  return api.cancelJob();
+}

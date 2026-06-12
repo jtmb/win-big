@@ -3,7 +3,16 @@
  * Two variants: one for Lotto 6/49, one for Lotto Max.
  */
 
-import type { DrawStatistics } from './provider';
+import type { DrawStatistics, MatchScore } from './provider';
+
+/** Context for the refinement prompt with real validation scores */
+export interface RefinementContext {
+  matchScore: MatchScore;
+  bestMatchRate: number;
+  bestRunNumber: number;
+  triedCount: number;
+  validationNumbers: number[];
+}
 
 export function build649Prompt(stats: DrawStatistics): string {
   const freqTop = topN(stats.numberFrequency, 15);
@@ -113,61 +122,79 @@ interface PreviousPrediction {
   bonus: number;
   confidence: number;
   reasoning: string;
+  encore: string;
 }
 
-function buildRefinementPrompt(stats: DrawStatistics, prev: PreviousPrediction): { assistantMsg: string; refinementMsg: string } {
+function buildRefinementPrompt(
+  stats: DrawStatistics,
+  prev: PreviousPrediction,
+  ctx: RefinementContext,
+): { assistantMsg: string; refinementMsg: string } {
+  const areHeldOutDraws = true; // stylize
+  const { matchScore, bestMatchRate, bestRunNumber, triedCount, validationNumbers } = ctx;
+  const mainCount = stats.recentDraws[0]?.numbers.length || 6;
+
   const assistantMsg = JSON.stringify({
     mainNumbers: prev.mainNumbers,
     bonus: prev.bonus,
-    encore: "0000000",
+    encore: prev.encore || '0000000',
     goldBall: null,
     confidence: prev.confidence,
     reasoning: prev.reasoning,
   });
 
-  // Build a critique of the previous prediction based on what it actually did
-  const prevSet = new Set(prev.mainNumbers);
-  const freqSorted = Object.entries(stats.numberFrequency)
-    .sort(([, a], [, b]) => b - a)
-    .map(([n]) => Number(n));
-  const top20 = new Set(freqSorted.slice(0, 20));
-  const coldSorted = Object.entries(stats.numberDaysSince)
-    .sort(([, a], [, b]) => b - a)
-    .map(([n]) => Number(n));
-  const coldest10 = new Set(coldSorted.slice(0, 10));
-  const hotNums = Object.entries(stats.numberHotStreaks)
-    .filter(([, s]) => s >= 2)
-    .map(([n]) => Number(n));
+  const matchedStr =
+    matchScore.matchedNumbers.length > 0
+      ? matchScore.matchedNumbers.join(', ')
+      : 'none';
+  const missed = prev.mainNumbers.filter((n) => !matchScore.matchedNumbers.includes(n));
+  const missedStr = missed.length > 0 ? missed.join(', ') : 'none';
 
-  const top20Hits = prev.mainNumbers.filter((n) => top20.has(n)).length;
-  const coldHits = prev.mainNumbers.filter((n) => coldest10.has(n)).length;
-  const hotHits = prev.mainNumbers.filter((n) => hotNums.includes(n)).length;
+  const valPoolStr =
+    validationNumbers.length > 0
+      ? validationNumbers.slice(0, 30).join(', ')
+      : '(validation set empty — ignore validation feedback this round)';
 
-  const critique = [
-    `Top-20 frequency coverage: ${top20Hits}/6 main numbers.`,
-    `Coldest-10 coverage: ${coldHits}/6.`,
-    `Hot streak (≥2) coverage: ${hotHits}/6.`,
-    prev.mainNumbers.some((n) => prev.bonus === n) ? `Bonus ${prev.bonus} clashes with a main number — invalid.` : '',
-  ].filter(Boolean).join(' ');
-
-  const refinementMsg = `That was your previous prediction.
-
-Now CRITICALLY RE-EXAMINE it. Here is an automated quality check:
-${critique}
-
-Consider: Are you over-weighting frequency and under-weighting recency? Could a different balance of hot numbers, cold numbers, and mid-frequency numbers produce a more robust prediction? Try a genuinely different combination — don't just tweak one or two numbers. Look for patterns you may have missed in the cold streaks or mid-tier frequencies.
-
-Return ONLY valid JSON with your best honest prediction and a truthful confidence score.`;
+  const refinementMsg = [
+    `That was your previous prediction. Here is how it actually performed against ${matchScore.totalValidationDraws} HELD-OUT validation draws (data you have NOT seen):`,
+    '',
+    `BEST SINGLE-DRAW MATCH: ${matchScore.mainMatches}/${mainCount} main numbers matched in one draw${matchScore.bestSingleDraw ? ` (draw date: ${matchScore.bestSingleDraw})` : ''}.`,
+    `  Matched in that draw: [${matchedStr}]`,
+    `  Missed in that draw:  [${missedStr}]`,
+    `  Bonus match in any val draw: ${matchScore.bonusMatches === 1 ? 'YES' : 'NO'}`,
+    '',
+    `IMPORTANT — this is per-draw scoring, not pool coverage. To win, all 6 numbers must appear together in the SAME draw. The pool of numbers across all ${matchScore.totalValidationDraws} validation draws is: [${valPoolStr}]`,
+    '',
+    triedCount > 1
+      ? `TRACK RECORD: Your best prediction so far matched ${bestMatchRate}/${mainCount} (on Run #${bestRunNumber}). You have tried ${triedCount} unique combinations so far.`
+      : `This is your first prediction; no best-yet to compare against.`,
+    '',
+    `YOUR TASK:`,
+    `1. Study which of your numbers actually hit the validation draws and which missed.`,
+    `2. Use the validation number pool above as a guide — aim for better coverage of those numbers.`,
+    `3. Do NOT repeat any prior combination. Try a genuinely different set that covers more of the validation pool.`,
+    `4. Your self-reported confidence should HONESTLY reflect how well you think this prediction will perform — NOT be inflated.`,
+    '',
+    `Return ONLY valid JSON with your best honest prediction and a truthful confidence score.`,
+  ].join('\n');
 
   return { assistantMsg, refinementMsg };
 }
 
-export function build649RefinementPrompt(stats: DrawStatistics, prev: PreviousPrediction) {
-  return buildRefinementPrompt(stats, prev);
+export function build649RefinementPrompt(
+  stats: DrawStatistics,
+  prev: PreviousPrediction,
+  ctx: RefinementContext,
+) {
+  return buildRefinementPrompt(stats, prev, ctx);
 }
 
-export function buildMaxRefinementPrompt(stats: DrawStatistics, prev: PreviousPrediction) {
-  return buildRefinementPrompt(stats, prev);
+export function buildMaxRefinementPrompt(
+  stats: DrawStatistics,
+  prev: PreviousPrediction,
+  ctx: RefinementContext,
+) {
+  return buildRefinementPrompt(stats, prev, ctx);
 }
 
 // ---- Helpers ----

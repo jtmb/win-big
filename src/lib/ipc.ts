@@ -27,6 +27,8 @@ declare global {
       endlessResume: () => Promise<void>;
       endlessStop: () => Promise<void>;
       onEndlessProgress: (callback: (evt: EndlessProgress) => void) => () => void;
+      exportEndlessRuns: (runs: EndlessProgress[], lotteryType: '649' | 'max') => Promise<{ success: boolean; reason?: string; filePath?: string }>;
+      openLogFolder: () => Promise<{ success: boolean; filePath?: string }>;
     };
   }
 }
@@ -55,7 +57,7 @@ export async function getSettings(): Promise<AppSettings> {
       aiProvider: 'lmstudio',
       scraperConcurrency: 6,
       scrapeDepthYears: 2,
-      endlessConfidenceTarget: 0.9,
+      endlessConfidenceTarget: 0.4,
       lmstudio: { baseUrl: 'http://192.168.0.13:1234/v1', model: '' },
       openai: { baseUrl: 'https://api.openai.com/v1', apiKey: '', model: 'gpt-4o' },
     };
@@ -171,4 +173,10 @@ export async function exportEndlessRuns(runs: EndlessProgress[], lotteryType: '6
   const api = getAPI();
   if (!api) return { success: false, reason: 'Electron API not available' };
   return api.exportEndlessRuns(runs, lotteryType);
+}
+
+export async function openLogFolder(): Promise<{ success: boolean; filePath?: string }> {
+  const api = getAPI();
+  if (!api) return { success: false };
+  return api.openLogFolder();
 }

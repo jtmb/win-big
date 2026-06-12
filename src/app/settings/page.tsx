@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import NavBar from '@/components/NavBar';
 import { useApp } from '@/contexts/AppContext';
-import { getSettings, saveSettings, testAiConnection, fetchLmStudioModels, clearAllData, getDbStats } from '@/lib/ipc';
+import { getSettings, saveSettings, testAiConnection, fetchLmStudioModels, clearAllData, getDbStats, openLogFolder } from '@/lib/ipc';
 import type { AppSettings } from '@/lib/types';
 
 // Cache models across re-renders so we only fetch once per session
@@ -396,8 +396,8 @@ export default function SettingsPage() {
             <input
               type="range"
               min={1}
-              max={5}
-              value={localSettings.scrapeDepthYears || 2}
+              max={1}
+              value={localSettings.scrapeDepthYears || 1}
               onChange={(e) => setLocalSettings({ ...localSettings, scrapeDepthYears: parseInt(e.target.value, 10) })}
               style={{ flex: 1, accentColor: 'var(--accent)' }}
             />
@@ -405,14 +405,14 @@ export default function SettingsPage() {
               fontSize: 18, fontWeight: 700, color: 'var(--accent)',
               minWidth: 36, textAlign: 'center',
             }}>
-              {localSettings.scrapeDepthYears || 2}
+              {localSettings.scrapeDepthYears || 1}
             </span>
             <span style={{ fontSize: 'clamp(10px, 0.9vw, 13px)', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-              years back
+              year back
             </span>
           </div>
           <p style={{ fontSize: 10, color: 'var(--text-secondary)', marginTop: 6, marginLeft: 4 }}>
-            How many years of past draws to scrape. More = better AI context but longer scrape. Default: 2 years
+            OLG only keeps 1 year of history. Max: 1 year (~104 draws)
           </p>
         </section>
 
@@ -428,9 +428,9 @@ export default function SettingsPage() {
           }}>
             <input
               type="range"
-              min={50}
+              min={10}
               max={99}
-              value={Math.round((localSettings.endlessConfidenceTarget ?? 0.9) * 100)}
+              value={Math.round((localSettings.endlessConfidenceTarget ?? 0.4) * 100)}
               onChange={(e) => setLocalSettings({ ...localSettings, endlessConfidenceTarget: parseInt(e.target.value, 10) / 100 })}
               style={{ flex: 1, accentColor: 'var(--accent)' }}
             />
@@ -438,11 +438,46 @@ export default function SettingsPage() {
               fontSize: 18, fontWeight: 700, color: 'var(--accent)',
               minWidth: 42, textAlign: 'center',
             }}>
-              {Math.round((localSettings.endlessConfidenceTarget ?? 0.9) * 100)}%
+              {Math.round((localSettings.endlessConfidenceTarget ?? 0.4) * 100)}%
             </span>
           </div>
           <p style={{ fontSize: 10, color: 'var(--text-secondary)', marginTop: 6, marginLeft: 4 }}>
-            Endless mode keeps refining predictions until this confidence % is reached, then keeps going. Default: 90%
+            Endless mode keeps refining predictions until this confidence % is reached, then keeps going. Default: 40%
+          </p>
+        </section>
+
+        {/* Training Logs */}
+        <section>
+          <h3 style={{ fontSize: 'clamp(12px, 1.2vw, 15px)', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1 }}>
+            📄 Training Logs
+          </h3>
+          <motion.button
+            whileHover={{ scale: 1.03 }}
+            whileTap={{ scale: 0.97 }}
+            onClick={async () => {
+              const result = await openLogFolder();
+              if (!result.success) {
+                setTestResult({ success: false, message: `Could not open: ${result.filePath}` });
+              }
+            }}
+            style={{
+              padding: '12px 22px',
+              borderRadius: 10,
+              background: 'var(--bg-card)',
+              border: '1px solid var(--border)',
+              color: 'var(--text-primary)',
+              fontSize: 'clamp(12px, 1.2vw, 15px)',
+              fontWeight: 600,
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 8,
+            }}
+          >
+            📂 Open Log Folder
+          </motion.button>
+          <p style={{ fontSize: 10, color: 'var(--text-secondary)', marginTop: 6, marginLeft: 4 }}>
+            Opens the folder where training session logs are saved (training-logs/*.txt)
           </p>
         </section>
 

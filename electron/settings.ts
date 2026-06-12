@@ -6,8 +6,8 @@ import type { AppSettings } from './preload';
 const DEFAULT_SETTINGS: AppSettings = {
   aiProvider: 'lmstudio',
   scraperConcurrency: 6,
-  scrapeDepthYears: 2,
-  endlessConfidenceTarget: 0.9,
+  scrapeDepthYears: 1,
+  endlessConfidenceTarget: 0.4,
   lmstudio: {
     baseUrl: 'http://192.168.0.13:1234/v1',
     model: '',

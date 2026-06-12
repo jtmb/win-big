@@ -10,9 +10,13 @@ import OpenAI from 'openai';
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions/completions';
 import type { Draw, AppSettings, Prediction } from '../preload';
 import { computeStatistics, build649Prompt, buildMaxPrompt, build649RefinementPrompt, buildMaxRefinementPrompt } from './index';
+import type { RefinementContext } from './prompts';
+import { logToFile } from '../logging';
 
 /**
  * Run the full analysis pipeline for a lottery type.
+ * When `refinementCtx` is provided, the refinement prompt includes real
+ * validation match scores instead of subjective quality checks.
  */
 export async function analyze(
   lotteryType: '649' | 'max',
@@ -20,7 +24,8 @@ export async function analyze(
   settings: AppSettings,
   onProgress?: (msg: string) => void,
   signal?: AbortSignal,
-  previousPrediction?: { mainNumbers: number[]; bonus: number; confidence: number; reasoning: string },
+  previousPrediction?: { mainNumbers: number[]; bonus: number; confidence: number; reasoning: string; encore: string },
+  refinementCtx?: RefinementContext,
 ): Promise<Prediction> {
   const stats = computeStatistics(draws, lotteryType);
   const prompt = lotteryType === '649' ? build649Prompt(stats) : buildMaxPrompt(stats);
@@ -35,12 +40,23 @@ export async function analyze(
   ];
 
   if (previousPrediction) {
+    const ctx = refinementCtx || {
+      matchScore: { mainMatches: 0, bonusMatches: 0, matchedNumbers: [], bestSingleDraw: null, totalValidationDraws: 0 },
+      bestMatchRate: 0,
+      bestRunNumber: 0,
+      triedCount: 0,
+      validationNumbers: [],
+    };
     const { assistantMsg, refinementMsg } =
       lotteryType === '649'
-        ? build649RefinementPrompt(stats, previousPrediction)
-        : buildMaxRefinementPrompt(stats, previousPrediction);
+        ? build649RefinementPrompt(stats, previousPrediction, ctx)
+        : buildMaxRefinementPrompt(stats, previousPrediction, ctx);
     messages.push({ role: 'assistant', content: assistantMsg });
     messages.push({ role: 'user', content: refinementMsg });
+
+    // Log the full refinement prompt for audit
+    logToFile('[__TRAINING_LOG] Refinement prompt (user message):');
+    logToFile(refinementMsg);
   }
 
   const isRefinement = !!previousPrediction;
@@ -84,6 +100,12 @@ export async function analyze(
         }
       }
 
+      // Log the model's internal reasoning/thinking (chain-of-thought tokens)
+      if (reasoningContent) {
+        logToFile('[__TRAINING_LOG] Model thinking (reasoning_content):');
+        logToFile(reasoningContent);
+      }
+
       // Parse from answerContent (preferred) or the last {…} block in the full text
       const raw = (answerContent || reasoningContent).trim();
       if (raw) onProgress?.(raw);
@@ -91,6 +113,12 @@ export async function analyze(
       const prediction = parseResponse(answerContent || reasoningContent, maxNumber, mainCount, lotteryType);
 
       if (prediction) {
+        // Log the full LLM response (reasoning is NOT truncated)
+        logToFile(
+          `[__TRAINING_LOG] LLM response: [${prediction.mainNumbers.join(', ')}] ` +
+          `bonus:${prediction.bonus} confidence:${prediction.confidence.toFixed(3)}`,
+        );
+        logToFile(`[__TRAINING_LOG] LLM reasoning: ${prediction.reasoning}`);
         return prediction;
       }
 

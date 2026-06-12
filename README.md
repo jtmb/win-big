@@ -483,7 +483,7 @@ Stored as JSON at `{userData}/winbig-settings.json`.
 | `aiProvider` | `'lmstudio' \| 'openai'` | `'lmstudio'` | Which LLM provider to use |
 | `scraperConcurrency` | `number` | `6` | How many simultaneous BrowserWindows for scraping (1-24) |
 | `scrapeDepthYears` | `number` | `2` | How many years of history to scrape (1-5) |
-| `endlessConfidenceTarget` | `number` | `0.9` | Confidence % target for endless mode (0.50-0.99) |
+| `endlessConfidenceTarget` | `number` | `0.4` | Confidence % target for endless mode (0.10-0.99) |
 | `lmstudio.baseUrl` | `string` | `http://192.168.0.13:1234/v1` | LM Studio API endpoint |
 | `lmstudio.model` | `string` | `''` | Model name (auto-detected if empty) |
 | `openai.baseUrl` | `string` | `https://api.openai.com/v1` | OpenAI-compatible endpoint |

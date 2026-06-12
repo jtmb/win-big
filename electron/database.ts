@@ -139,6 +139,18 @@ export function getDraws(lottery: '649' | 'max', limit?: number): Draw[] {
   return rows.map(rowToDraw);
 }
 
+export function getExistingDrawDates(lottery: '649' | 'max'): Set<string> {
+  const database = getDB();
+  const stmt = database.prepare('SELECT draw_date FROM draws WHERE lottery = ?');
+  stmt.bind([lottery]);
+  const dates = new Set<string>();
+  while (stmt.step()) {
+    dates.add(stmt.getAsObject().draw_date as string);
+  }
+  stmt.free();
+  return dates;
+}
+
 export function getDrawCount(lottery: '649' | 'max'): number {
   const database = getDB();
   const stmt = database.prepare('SELECT COUNT(*) as cnt FROM draws WHERE lottery = ?');

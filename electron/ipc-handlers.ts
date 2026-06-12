@@ -1,4 +1,6 @@
-import { ipcMain, dialog } from 'electron';
+import { ipcMain, dialog, shell, app } from 'electron';
+import * as path from 'path';
+import * as fs from 'fs';
 import { initDB, getDraws, clearDraws, clearAllData, getDbStats, saveJob, getJobs, getLatestDrawDate } from './database';
 import { loadSettings, saveSettings } from './settings';
 import { scrapeResults } from './scraper/olg-scraper';
@@ -44,7 +46,7 @@ export async function registerIpcHandlers(): Promise<void> {
       let drawsCount = 0;
       const settings = loadSettings();
       try {
-        const draws = await scrapeResults(lotteryType, settings.scraperConcurrency || 12, testMode || 0, send, abortController.signal, settings.scrapeDepthYears ?? 2);
+        const draws = await scrapeResults(lotteryType, settings.scraperConcurrency || 12, testMode || 0, send, abortController.signal, settings.scrapeDepthYears ?? 1);
         drawsCount = draws.length;
         if (drawsCount > 0) {
           send({
@@ -157,9 +159,11 @@ export async function registerIpcHandlers(): Promise<void> {
   let endlessRunner: EndlessRunner | null = null;
 
   ipcMain.handle('endless:start', async (_event, lotteryType: '649' | 'max') => {
-    // Stop any existing runner
+    // Await previous runner's full cleanup to prevent stale events
     if (endlessRunner) {
-      endlessRunner.stop();
+      const old = endlessRunner;
+      endlessRunner = null;
+      await old.stop();
     }
 
     const sender = _event.sender;
@@ -191,9 +195,20 @@ export async function registerIpcHandlers(): Promise<void> {
 
   ipcMain.handle('endless:stop', async () => {
     if (endlessRunner) {
-      endlessRunner.stop();
+      const old = endlessRunner;
       endlessRunner = null;
+      await old.stop();
     }
+  });
+
+  // Open the training-logs folder in the OS file explorer
+  ipcMain.handle('open-log-folder', async () => {
+    const logsDir = path.join(app.getPath('userData'), 'training-logs');
+    if (!fs.existsSync(logsDir)) {
+      fs.mkdirSync(logsDir, { recursive: true });
+    }
+    const errorMsg = await shell.openPath(logsDir);
+    return { success: !errorMsg, filePath: errorMsg || logsDir };
   });
 
   // Export endless training runs as Excel

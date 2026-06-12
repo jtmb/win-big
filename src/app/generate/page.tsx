@@ -44,6 +44,8 @@ export default function GeneratePage({
   const [endlessRuns, setEndlessRuns] = useState<EndlessProgress[]>([]);
   const [endlessStatus, setEndlessStatus] = useState<'idle' | 'running' | 'paused' | 'stopped' | 'complete'>('idle');
   const analysisRef = useRef<HTMLDivElement>(null);
+  const endlessStoppedRef = useRef(false); // guard: prevent progress events from undoing a user-requested stop
+  const endlessActiveRef = useRef(false);  // track if runner is active (for unmount cleanup)
 
   const lotteryIcon = lottery === '649' ? '/lotto649.png' : '/lottomax.png';
 
@@ -79,6 +81,9 @@ export default function GeneratePage({
   // Listen for endless mode progress
   useEffect(() => {
     const unsub = onEndlessProgress((evt: EndlessProgress) => {
+      // If user requested stop, ignore all subsequent progress events
+      if (endlessStoppedRef.current) return;
+
       setEndlessRuns((prev) => {
         const idx = prev.findIndex((r) => r.runNumber === evt.runNumber);
         if (idx >= 0) {
@@ -91,6 +96,7 @@ export default function GeneratePage({
       setEndlessStatus(evt.status);
 
       if (evt.status === 'complete' || evt.status === 'stopped') {
+        endlessActiveRef.current = false;
         setIsGenerating(false);
         setActiveJobType(null);
         setScrapingProgress(null);
@@ -121,13 +127,27 @@ export default function GeneratePage({
     return unsub;
   }, [setIsGenerating, setPrediction, setIsAnalysisPhase]);
 
+  // Cleanup: stop the endless runner when navigating away (X button / back)
+  useEffect(() => {
+    return () => {
+      if (endlessActiveRef.current) {
+        endlessStoppedRef.current = true;
+        endlessActiveRef.current = false;
+        endlessStop().catch(() => {});
+      }
+    };
+  }, []);
+
   const handleGenerate = useCallback(async () => {
-    // Reset endless state when switching to single mode
+    // Reset endless state when switching modes (also acts as safety net for endless restart)
     setEndlessRuns([]);
     setEndlessStatus('idle');
 
     if (endlessMode) {
       // ---- Endless Mode (fire-and-forget; progress listeners drive UI) ----
+      setEndlessRuns([]);
+      endlessStoppedRef.current = false;
+      endlessActiveRef.current = true;
       setIsGenerating(true);
       setActiveJobType(lottery);
       setPrediction(null);
@@ -193,6 +213,8 @@ export default function GeneratePage({
   }, [setIsGenerating, setIsAnalysisPhase]);
 
   const handleEndlessStop = useCallback(async () => {
+    endlessStoppedRef.current = true;
+    endlessActiveRef.current = false;
     await endlessStop();
     setIsGenerating(false);
     setEndlessStatus('stopped');
@@ -479,34 +501,54 @@ export default function GeneratePage({
                       display: 'flex',
                       justifyContent: 'space-between',
                       alignItems: 'center',
+                      flexWrap: 'wrap',
+                      gap: 4,
                     }}>
                       <span>📊 Training Runs ({endlessRuns.length})</span>
-                      <span style={{ fontSize: 10, opacity: 0.7 }}>
-                        🎯 Target: {Math.round((settings?.endlessConfidenceTarget ?? 0.9) * 100)}%
+                      <span style={{ fontSize: 10, opacity: 0.7, display: 'flex', alignItems: 'center', gap: 8 }}>
+                        🎯 Target: {Math.round((settings?.endlessConfidenceTarget ?? 0.4) * 100)}%
+                        <span style={{ color: 'var(--success)' }}>3+</span>/<span style={{ color: 'var(--accent-gold)' }}>2</span>/<span style={{ color: 'var(--error)' }}>1</span> match
                         {endlessStatus === 'running' && ' · Running'}
                         {endlessStatus === 'paused' && ' · Paused'}
                         {endlessStatus === 'stopped' && ' · Stopped'}
                         {endlessStatus === 'complete' && ' · ✅ Complete!'}
                       </span>
                     </div>
-                    {[...endlessRuns].reverse().map((run) => (
+                    {endlessRuns[0]?.logFilePath && (
+                      <div style={{
+                        padding: '3px 14px',
+                        fontSize: 9,
+                        color: 'var(--text-secondary)',
+                        opacity: 0.5,
+                        borderBottom: '1px solid var(--border)',
+                      }}>
+                        📄 Log: {endlessRuns[0].logFilePath}
+                      </div>
+                    )}
+                    {[...endlessRuns].reverse().map((run) => {
+                      const isBest = run.bestRunNumber === run.runNumber && (run.bestMatchRate ?? 0) > 0;
+                      const matchColor =
+                        (run.matchRate ?? 0) >= 3 ? 'var(--success)' :
+                        (run.matchRate ?? 0) >= 2 ? 'var(--accent-gold)' :
+                        'var(--error)';
+                      return (
                       <div key={run.runNumber} style={{
                         display: 'flex',
                         alignItems: 'center',
-                        gap: 10,
+                        gap: 8,
                         padding: '6px 14px',
                         borderBottom: '1px solid var(--border)',
                         fontSize: 12,
                         color: 'var(--text-secondary)',
                       }}>
                         <span style={{ fontWeight: 700, minWidth: 48, color: 'var(--text-primary)' }}>
-                          Run #{run.runNumber}
+                          {isBest ? '⭐' : ''} Run #{run.runNumber}
                         </span>
                         <div style={{ flex: 1, height: 4, borderRadius: 2, background: 'var(--border)', overflow: 'hidden' }}>
                           <div style={{
                             width: `${Math.round(run.confidence * 100)}%`,
                             height: '100%',
-                            background: run.confidence >= (settings?.endlessConfidenceTarget ?? 0.9) ? 'var(--success)' : run.confidence >= 0.7 ? 'var(--accent-gold)' : 'var(--accent)',
+                            background: run.confidence >= (settings?.endlessConfidenceTarget ?? 0.4) ? 'var(--success)' : run.confidence >= 0.7 ? 'var(--accent-gold)' : 'var(--accent)',
                             borderRadius: 2,
                             transition: 'width 0.3s',
                           }} />
@@ -514,7 +556,14 @@ export default function GeneratePage({
                         <span style={{ fontWeight: 600, minWidth: 36, textAlign: 'right' }}>
                           {Math.round(run.confidence * 100)}%
                         </span>
-                        <span style={{ fontSize: 10, opacity: 0.6, minWidth: 50, textAlign: 'right' }}>
+                        {(run.matchRate ?? 0) > 0 ? (
+                          <span style={{ fontWeight: 700, minWidth: 44, textAlign: 'center', color: matchColor, fontSize: 11 }}>
+                            {run.matchRate}/6
+                          </span>
+                        ) : (
+                          <span style={{ minWidth: 44 }} />
+                        )}
+                        <span style={{ fontSize: 10, opacity: 0.6, minWidth: 44, textAlign: 'right' }}>
                           {run.drawCount > 0 ? `${run.drawCount} draws` : ''}
                           {run.error ? ' ⚠️' : ''}
                         </span>
@@ -522,7 +571,8 @@ export default function GeneratePage({
                           <span style={{ color: 'var(--accent-gold)', fontSize: 10 }}>PAUSED</span>
                         )}
                       </div>
-                    ))}
+                      );
+                    })}
                   </motion.div>
                 )}
 
@@ -729,7 +779,7 @@ export default function GeneratePage({
                       fontSize: 11, color: 'var(--text-secondary)', textAlign: 'center',
                       opacity: 0.8,
                     }}>
-                      Run #{endlessRuns.length + 1} · 🎯 Target: {Math.round((settings?.endlessConfidenceTarget ?? 0.9) * 100)}%
+                      Run #{endlessRuns.length + 1} · 🎯 Target: {Math.round((settings?.endlessConfidenceTarget ?? 0.4) * 100)}%
                     </div>
                   )}
                 </div>

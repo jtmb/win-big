@@ -23,9 +23,86 @@ export interface TestResult {
   message: string;
 }
 
+export interface TrainValSplit {
+  training: Draw[];
+  validation: Draw[];
+}
+
+export interface MatchScore {
+  mainMatches: number;
+  bonusMatches: number;
+  matchedNumbers: number[];
+  bestSingleDraw: string | null; // date of the single validation draw that best matched
+  totalValidationDraws: number;
+}
+
+/**
+ * Split draws chronologically into training (~80%) and validation (~20%) sets.
+ * The validation set is the most recent draws — simulating "predicting the future."
+ * Returns at least 3 validation draws if total >= 15, otherwise 10% validation.
+ */
+export function splitDraws(draws: Draw[]): TrainValSplit {
+  const sorted = [...draws].sort((a, b) => a.drawDate.localeCompare(b.drawDate));
+  const total = sorted.length;
+
+  let valSize: number;
+  if (total < 10) {
+    valSize = 1;
+  } else if (total < 30) {
+    valSize = Math.max(2, Math.floor(total * 0.15));
+  } else {
+    valSize = Math.max(5, Math.floor(total * 0.2));
+  }
+
+  const validation = sorted.slice(-valSize);
+  const training = sorted.slice(0, total - valSize);
+
+  return { training, validation };
+}
+
+/**
+ * Score a prediction against held-out validation draws.
+ * Uses BEST-SINGLE-DRAW scoring: for each validation draw, counts how many
+ * of the predicted main numbers appear in THAT draw, then reports the maximum.
+ * This is honest — pool-based scoring is trivial since ~45/49 numbers appear
+ * across 20 draws. A real win requires matching numbers in the SAME draw.
+ * Bonus is scored as 1 if it matches ANY validation draw's bonus.
+ */
+export function scorePrediction(
+  mainNumbers: number[],
+  bonus: number,
+  validationDraws: Draw[],
+): MatchScore {
+  let bestMainMatches = 0;
+  let bestMatchedNumbers: number[] = [];
+  let bestDrawDate: string | null = null;
+  let bonusMatches = 0;
+
+  for (const draw of validationDraws) {
+    const drawNumSet = new Set(draw.numbers);
+    const matched = mainNumbers.filter((n) => drawNumSet.has(n));
+    if (matched.length > bestMainMatches) {
+      bestMainMatches = matched.length;
+      bestMatchedNumbers = matched;
+      bestDrawDate = draw.drawDate;
+    }
+    if (draw.bonus === bonus) bonusMatches = 1;
+  }
+
+  return {
+    mainMatches: bestMainMatches,
+    bonusMatches,
+    matchedNumbers: bestMatchedNumbers,
+    bestSingleDraw: bestDrawDate,
+    totalValidationDraws: validationDraws.length,
+  };
+}
+
 /**
  * Compute frequency statistics for the draw history.
  * This reduces the payload sent to the AI and fits within smaller context windows.
+ * When `drawsOverride` is provided, uses that subset instead of all draws
+ * (used in endless training mode for train-only statistics).
  */
 export interface DrawStatistics {
   totalDraws: number;

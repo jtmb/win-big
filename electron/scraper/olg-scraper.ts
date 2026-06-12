@@ -7,7 +7,8 @@
 
 import { BrowserWindow, ipcMain } from 'electron';
 import * as path from 'path';
-import { initDB, insertDraws, getDrawCount, getDraws, clearDraws } from '../database';
+import { initDB, insertDraws, getDraws, clearDraws, getExistingDrawDates } from '../database';
+import { loadSettings, saveSettings } from '../settings';
 import type { ParsedDraw, ScraperProgress } from './types';
 
 // ---- Constants ----
@@ -41,6 +42,12 @@ function createWindow(): BrowserWindow {
   win.webContents.setUserAgent(
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
   );
+  // Relay preload console.log to main process for debugging
+  win.webContents.on('console-message', (_e, _level, message) => {
+    if (message.startsWith('[preload]')) {
+      console.log(message);
+    }
+  });
   return win;
 }
 
@@ -66,52 +73,6 @@ function extractViaPreload(win: BrowserWindow, date: string): Promise<ScraperRes
     // The preload relays its result to our per-window channel
     win.webContents.send('scraper:extract', date, channel);
   });
-}
-
-/**
- * Scrape a single date using a fresh BrowserWindow + preload script.
- * The preload runs in the page context (bypasses CSP) and extracts DOM text.
- */
-async function scrapeDate(
-  lottery: '649' | 'max',
-  date: string,
-  parseFn: (text: string) => ParsedDraw | null,
-  index: number,
-  onPhase?: (phase: 'loading' | 'applying' | 'extracting') => void,
-  staggerMs: number = 0,
-): Promise<ParsedDraw | null> {
-  const pastUrl = PAST_URLS[lottery];
-  let win: BrowserWindow | null = null;
-
-  try {
-    // Stagger loadURL calls so OLG doesn't see a burst and block us
-    if (staggerMs > 0) {
-      await new Promise((r) => setTimeout(r, staggerMs));
-    }
-
-    win = createWindow();
-    await win.loadURL(pastUrl);
-    onPhase?.('loading');
-
-    const result = await extractViaPreload(win, date);
-
-    if (result.error) {
-      console.warn(`[${index}] Preload error scraping ${date}:`, result.error);
-      return null;
-    }
-    if (!result.text) {
-      console.warn(`[${index}] No text returned from preload for ${date}`);
-      return null;
-    }
-
-    onPhase?.('extracting');
-    return parseFn(result.text);
-  } catch (err) {
-    console.warn(`[${index}] Error scraping ${date}:`, err);
-    return null;
-  } finally {
-    if (win && !win.isDestroyed()) win.destroy();
-  }
 }
 
 // ---- Parsing ----
@@ -220,18 +181,41 @@ export async function scrapeResults(
 ): Promise<ParsedDraw[]> {
   await initDB();
 
-  // Auto-repair: if any existing draws have the broken Encore fallback ('0000000'),
-  // clear them all so a fresh scrape pulls real Encore data.
-  // (After this fix, no draw should ever have '0000000' unless OLG itself returns that.)
-  const existingDraws = getDraws(lottery, 10);
-  if (existingDraws.length > 0 && existingDraws.some(d => d.encore === '0000000')) {
-    console.warn(`[scraper] Detected broken Encore data — clearing ${getDrawCount(lottery)} draws for re-scrape.`);
+  // Auto-repair: if existing draws have broken Encore data ('0000000'), clear and re-scrape.
+  // Guard: only trigger when there ARE draws and at least one has the broken placeholder.
+  const sampleDraws = getDraws(lottery, 10);
+  if (sampleDraws.length > 0 && sampleDraws.some(d => d.encore === '0000000')) {
+    console.warn(`[scraper] Detected broken Encore data — clearing ${sampleDraws.length > 0 ? 'all' : '0'} draws for re-scrape.`);
     clearDraws(lottery);
   }
 
-  const existingCount = getDrawCount(lottery);
+  // Build a Set of dates already in the DB for O(1) lookup
+  const existingDates = getExistingDrawDates(lottery);
   const targetDates = generateDrawDates(lottery, yearsBack);
-  let neededDates = targetDates.slice(existingCount);
+
+  // Apply saved OLG cutoff: dates before this are unreachable (OLG's 1-year rolling window).
+  // Skip the saved cutoff when DB is empty — we need to re-discover it.
+  const settings = loadSettings();
+  const savedCutoff = settings.olgCutoffDate?.[lottery];
+  if (savedCutoff && existingDates.size > 0) {
+    const before = targetDates.length;
+    const filtered = targetDates.filter(d => d >= savedCutoff);
+    console.log(`[scraper] OLG cutoff ${savedCutoff} — filtered ${before - filtered.length} unreachable dates, ${filtered.length} remain`);
+    targetDates.length = 0;
+    targetDates.push(...filtered);
+  } else if (savedCutoff && existingDates.size === 0) {
+    // DB is empty — clear stale cutoff so we re-discover it from scratch
+    console.log(`[scraper] DB empty, clearing saved OLG cutoff (was: ${savedCutoff})`);
+    if (settings.olgCutoffDate) {
+      delete settings.olgCutoffDate[lottery];
+      if (Object.keys(settings.olgCutoffDate).length === 0) {
+        delete settings.olgCutoffDate;
+      }
+    }
+    saveSettings(settings);
+  }
+
+  let neededDates = targetDates.filter(d => !existingDates.has(d));
   const poolSize = Math.max(1, Math.min(concurrency, 24)); // clamp 1-24
 
   // Test mode: only scrape N draws for quick testing (most recent first)
@@ -245,83 +229,175 @@ export async function scrapeResults(
   }
 
   const parseFn = lottery === '649' ? parse649Text : parseMaxText;
-  const total = neededDates.length;
-  const totalMilestones = total * 3; // each scrape has 3 phases → smooth bar
+  const remaining = neededDates.length;
+  const totalTarget = targetDates.length;
+  const totalMilestones = remaining * 3; // each scrape has 3 phases → smooth bar
   const newDraws: ParsedDraw[] = [];
   let completed = 0;
 
   // Watcher: track how many phase milestones each in-flight scrape has hit (0–3)
   const inFlight = new Map<number, number>();
 
+  /** Save whatever we've scraped so far (partial persistence on abort). */
+  const savePartial = () => {
+    if (newDraws.length > 0) {
+      const inserted = insertDraws(newDraws);
+      console.log(`[scraper] Saved ${inserted} partially-scraped draws so far.`);
+    }
+  };
+
   const reportProgress = () => {
     const inflightPhases = [...inFlight.values()].reduce((a, b) => a + b, 0);
     const current = completed * 3 + inflightPhases;
-    const drawsDone = Math.min(total, Math.floor(current / 3));
-    onProgress?.({ current, total: totalMilestones, drawCurrent: drawsDone, drawTotal: total, message: `Scraping ${drawsDone}/${total}...` });
+    const drawsDone = Math.min(remaining, Math.floor(current / 3));
+    const cachedCount = existingDates.size;
+    onProgress?.({ current, total: totalMilestones, drawCurrent: drawsDone, drawTotal: remaining, message: `Scraping ${drawsDone}/${remaining} remaining (${cachedCount + drawsDone}/${totalTarget} total)` });
   };
 
   // Heartbeat: calls reportProgress every 400ms so the bar + counter never freeze
-  // between real phase callbacks (e.g. during PAGE_WAIT_MS gaps).
   const heartbeat = setInterval(reportProgress, 400);
 
-  onProgress?.({ current: 0, total: totalMilestones, drawCurrent: 0, drawTotal: total, message: `Scraping 0/${total} draws (${poolSize} concurrent)...` });
+  const cachedCount = existingDates.size;
+  onProgress?.({ current: 0, total: totalMilestones, drawCurrent: 0, drawTotal: remaining, message: `Scraping 0/${remaining} remaining (${cachedCount}/${totalTarget} total)...` });
 
-  for (let i = 0; i < total; i += poolSize) {
-    // Check for cancellation before each batch
-    if (signal?.aborted) {
-      clearInterval(heartbeat);
-      onProgress?.({ current: completed * 3, total: totalMilestones, drawCurrent: completed, drawTotal: total, message: 'Cancelled by user.' });
-      return newDraws;
+  // ---- Window pool: create once, reuse for all dates ----
+  // Creating/destroying BrowserWindows per-date blocks the main thread
+  // and causes the Windows busy cursor.
+  const pastUrl = PAST_URLS[lottery];
+  const windows: BrowserWindow[] = [];
+  try {
+    // Create all windows up front, yielding after each
+    for (let w = 0; w < poolSize; w++) {
+      windows.push(createWindow());
+      // Yield to the event loop so the OS doesn't see a hung main thread
+      await new Promise<void>((r) => setImmediate(r));
+    }
+    // Navigate all windows to the past-results page (async, non-blocking)
+    await Promise.all(windows.map((win) => win.loadURL(pastUrl)));
+
+    // Distribute dates round-robin across the pool
+    const queues: string[][] = Array.from({ length: poolSize }, () => []);
+    for (let d = 0; d < remaining; d++) {
+      queues[d % poolSize].push(neededDates[d]);
     }
 
-    const batch = neededDates.slice(i, i + poolSize);
+    let globalIdx = 0;
+    let olgCutoffDate: string | null = null;
 
-    // Dispatch batch — each reports its internal phases for smooth progress
-    const wrapped = batch.map((date, j) => {
-      const idx = i + j;
-      inFlight.set(idx, 0); // started, 0 milestones yet
+    // Each pool worker: processes its queue of dates one by one on the same window
+    async function poolWorker(win: BrowserWindow, queue: string[]): Promise<ParsedDraw[]> {
+      const results: ParsedDraw[] = [];
+      for (const date of queue) {
+        if (signal?.aborted) break;
+        const idx = globalIdx++;
 
-      // Auto-advance: if the real onPhase callbacks haven't fired yet, simulate
-      // forward progress so the bar and counter never freeze during PAGE_WAIT_MS.
-      // Each stagger is offset by 200ms per index so 12 concurrent scrapes don't
-      // all jump at once — they ramp up smoothly.
-      const stagger = j * 200;
-      const t1 = setTimeout(() => { if (inFlight.has(idx)) { inFlight.set(idx, Math.max(1, inFlight.get(idx)!)); } }, 1500 + stagger);
-      const t2 = setTimeout(() => { if (inFlight.has(idx)) { inFlight.set(idx, Math.max(2, inFlight.get(idx)!)); } }, 4000 + stagger);
-      const t3 = setTimeout(() => { if (inFlight.has(idx)) { inFlight.set(idx, Math.max(3, inFlight.get(idx)!)); } }, 7000 + stagger);
+        inFlight.set(idx, 0);
 
-      reportProgress();
-
-      return scrapeDate(lottery, date, parseFn, idx, (phase) => {
-        // Each phase hit increments the milestone count for this scrape,
-        // replacing the auto-advance timer value with the real one.
-        const milestones = phase === 'loading' ? 1 : phase === 'applying' ? 2 : 3;
-        inFlight.set(idx, milestones);
+        const t1 = setTimeout(() => { if (inFlight.has(idx)) inFlight.set(idx, Math.max(1, inFlight.get(idx)!)); }, 1500);
+        const t2 = setTimeout(() => { if (inFlight.has(idx)) inFlight.set(idx, Math.max(2, inFlight.get(idx)!)); }, 4000);
+        const t3 = setTimeout(() => { if (inFlight.has(idx)) inFlight.set(idx, Math.max(3, inFlight.get(idx)!)); }, 7000);
         reportProgress();
-      }, j * 800).then((result) => {
-        clearTimeout(t1); clearTimeout(t2); clearTimeout(t3);
-        inFlight.delete(idx);
-        completed++;
-        reportProgress();
-        return result;
-      });
-    });
 
-    const results = await Promise.all(wrapped);
+        try {
+          const result = await extractViaPreload(win, date);
 
-    const draws = results.filter((d): d is ParsedDraw => d !== null);
-    newDraws.push(...draws);
+          clearTimeout(t1); clearTimeout(t2); clearTimeout(t3);
+          inFlight.set(idx, 3); // extracting
+          reportProgress();
+
+          if (result.error) {
+            // Check for OLG cutoff errors
+            const cutoffMatch = result.error.match(/cutoff:\s*(\d{4}-\d{2}-\d{2})/);
+            if (cutoffMatch) {
+              if (!olgCutoffDate || cutoffMatch[1] < olgCutoffDate) {
+                olgCutoffDate = cutoffMatch[1];
+              }
+              console.warn(`[${idx}] OLG out of range ${date} (cutoff: ${cutoffMatch[1]})`);
+            } else {
+              console.warn(`[${idx}] Preload error scraping ${date}:`, result.error);
+            }
+          } else if (!result.text) {
+            console.warn(`[${idx}] No text returned from preload for ${date}`);
+          } else {
+            const parsed = parseFn(result.text);
+            if (parsed) {
+              // Guard: verify the parsed draw date actually matches the requested date.
+              // When OLG silently rejects a date it shows the default page instead —
+              // the parser would see that page's date, not the requested one.
+              const parsedDate = new Date(parsed.drawDate);
+              const requestedDate = new Date(date);
+              const diffDays = Math.abs(parsedDate.getTime() - requestedDate.getTime()) / 86400000;
+              if (diffDays > 1) {
+                console.warn(`[${idx}] Date mismatch — requested ${date} but parsed ${parsed.drawDate} (diff ${diffDays.toFixed(0)}d), discarding`);
+              } else {
+                results.push(parsed);
+              }
+            }
+          }
+        } catch (err) {
+          console.warn(`[${idx}] Error scraping ${date}:`, err);
+        } finally {
+          clearTimeout(t1); clearTimeout(t2); clearTimeout(t3);
+          inFlight.delete(idx);
+          completed++;
+          reportProgress();
+        }
+      }
+      return results;
+    }
+
+    // Race the pool against the abort signal
+    let abortTimer: ReturnType<typeof setInterval> | null = null;
+    const abortPromise = signal
+      ? new Promise<never>((_, reject) => {
+          abortTimer = setInterval(() => {
+            if (signal.aborted) reject(new DOMException('Aborted', 'AbortError'));
+          }, 300);
+        })
+      : new Promise<never>(() => {});
+
+    let allResults: ParsedDraw[][] = [];
+    try {
+      const workers = windows.map((win, i) => poolWorker(win, queues[i]));
+      allResults = await Promise.race([
+        Promise.all(workers),
+        abortPromise,
+      ]);
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        for (const [idx] of inFlight) inFlight.delete(idx);
+        clearInterval(heartbeat);
+        savePartial();
+        onProgress?.({ current: completed * 3, total: totalMilestones, drawCurrent: completed, drawTotal: remaining, message: `Cancelled. Saved ${newDraws.length} draws.` });
+        return newDraws;
+      }
+      throw err;
+    } finally {
+      if (abortTimer) clearInterval(abortTimer);
+    }
+
+    for (const r of allResults) {
+      newDraws.push(...r);
+    }
+    savePartial(); // one save after all results collected
+
+    // Persist OLG cutoff so future runs skip unreachable dates
+    if (olgCutoffDate) {
+      const current = settings.olgCutoffDate || {};
+      current[lottery] = olgCutoffDate;
+      settings.olgCutoffDate = current;
+      saveSettings(settings);
+      console.log(`[scraper] Saved OLG cutoff for ${lottery}: ${olgCutoffDate}`);
+    }
+  } finally {
+    // Destroy all pool windows
+    for (const win of windows) {
+      if (!win.isDestroyed()) win.destroy();
+    }
   }
 
   clearInterval(heartbeat);
-
-  onProgress?.({ current: completed, total, message: `Done scraping. Saving ${newDraws.length} draws...` });
-
-  if (newDraws.length > 0) {
-    const inserted = insertDraws(newDraws);
-    onProgress?.({ current: inserted, total: newDraws.length, message: `Stored ${inserted} new draws in database.` });
-  }
-
+  onProgress?.({ current: remaining, total: remaining, drawCurrent: newDraws.length, drawTotal: remaining, message: `Done. ${newDraws.length} new draws scraped (DB: ${cachedCount + newDraws.length}/${totalTarget} total).` });
   return newDraws;
 }
 

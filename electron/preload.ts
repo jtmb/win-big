@@ -34,6 +34,8 @@ export interface AppSettings {
   scraperConcurrency: number;
   scrapeDepthYears: number;
   endlessConfidenceTarget: number;
+  /** OLG's rolling 1-year cutoff per lottery, discovered during scraping. Dates before this are unreachable. */
+  olgCutoffDate?: Record<string, string>;
   lmstudio: {
     baseUrl: string;
     model: string;
@@ -60,6 +62,10 @@ export interface EndlessProgress {
   status: 'running' | 'paused' | 'stopped' | 'complete';
   prediction?: Prediction;
   error?: string;
+  matchRate?: number;
+  bestMatchRate?: number;
+  bestRunNumber?: number;
+  logFilePath?: string;
 }
 
 const api = {
@@ -129,6 +135,9 @@ const api = {
 
   exportEndlessRuns: (runs: EndlessProgress[], lotteryType: '649' | 'max'): Promise<{ success: boolean; reason?: string; filePath?: string }> =>
     ipcRenderer.invoke('export-endless-runs', runs, lotteryType),
+
+  openLogFolder: (): Promise<{ success: boolean; filePath?: string }> =>
+    ipcRenderer.invoke('open-log-folder'),
 
   onEndlessProgress: (callback: (evt: EndlessProgress) => void) => {
     const handler = (_event: IpcRendererEvent, evt: EndlessProgress) => callback(evt);

@@ -62,4 +62,8 @@ export interface EndlessProgress {
   status: 'running' | 'paused' | 'stopped' | 'complete';
   prediction?: Prediction;
   error?: string;
+  matchRate?: number;
+  bestMatchRate?: number;
+  bestRunNumber?: number;
+  logFilePath?: string;
 }
